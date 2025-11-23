@@ -8,7 +8,9 @@ import { X, MapPin } from 'lucide-react'
 
 // Mapbox Streets v9 style
 // Note: Requires Mapbox access token (NEXT_PUBLIC_MAPBOX_TOKEN)
-const DEFAULT_STYLE_URL = 'mapbox://styles/mapbox/streets-v9'
+// const DEFAULT_STYLE_URL = 'mapbox://styles/mapbox/streets-v9'
+const DEFAULT_STYLE_URL =
+  'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json'
 
 interface LocationPickerProps {
   isOpen: boolean

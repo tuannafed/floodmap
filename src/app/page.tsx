@@ -213,7 +213,7 @@ export default function Page() {
           }}
           placeholder="Nhập tỉnh/thành phố..."
           disabled={isSearching}
-          className="border border-input rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-ring bg-background text-foreground disabled:opacity-50 min-w-[200px] md:min-w-[300px]"
+          className="border border-input rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-ring bg-background text-foreground disabled:opacity-50 min-w-[300px] md:min-w-[300px]"
         />
         <button
           type="submit"

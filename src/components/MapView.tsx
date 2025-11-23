@@ -429,23 +429,6 @@ function SosMarkersLayerInner({
           }}
         />
       </Source>
-
-      {/* Popup for selected SOS */}
-      {selectedSos && (
-        <Popup
-          longitude={selectedSos.lon}
-          latitude={selectedSos.lat}
-          anchor="bottom"
-          onClose={() => onSelectSos?.(null)}
-          closeButton={false}
-          closeOnClick={true}
-        >
-          <SosPopup
-            report={selectedSos}
-            onClose={() => onSelectSos?.(null)}
-          />
-        </Popup>
-      )}
     </>
   )
 }
@@ -561,7 +544,8 @@ export default function MapView({
         layers.sosUnclustered.layerId,
       ]}
     >
-      <NavigationControl position="top-left" />
+      {/* NavigationControl removed - zoom toolbar hidden */}
+      {/* <NavigationControl position="top-left" /> */}
 
       <RadarLayer show={showRadar} />
       <DEMLayer
@@ -578,6 +562,23 @@ export default function MapView({
         selectedSos={selectedSos}
         onSelectSos={onSosSelect}
       />
+
+      {/* Popup for selected SOS - must be rendered directly in Map */}
+      {selectedSos && (
+        <Popup
+          longitude={selectedSos.lon}
+          latitude={selectedSos.lat}
+          anchor="bottom"
+          onClose={() => onSosSelect?.(null)}
+          closeButton={false}
+          closeOnClick={true}
+        >
+          <SosPopup
+            report={selectedSos}
+            onClose={() => onSosSelect?.(null)}
+          />
+        </Popup>
+      )}
     </Map>
   )
 }
