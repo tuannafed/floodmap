@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect } from 'react'
-import type { Map as MapLibreMap } from 'maplibre-gl'
 import {
   Map,
   Source,
@@ -15,26 +14,12 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import {
   layers,
   riskColorExpression,
-  demColorExpression,
   sosStatusColorExpression,
   sosClusterColorExpression,
   sosClusterSizeExpression,
 } from '@/lib/maplibre'
 import { SosPopup } from './SosPopup'
-
-// Free MapLibre styles options:
-// - Carto Positron (light): https://basemaps.cartocdn.com/gl/positron-gl-style/style.json
-// - Carto Dark Matter (dark): https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json
-// - OpenStreetMap: https://demotiles.maplibre.org/style.json
-// - Stadia Maps Alidade Smooth (light, giống Mapbox Streets): https://tiles.stadiamaps.com/styles/alidade_smooth.json
-// - Stadia Maps Alidade Smooth Dark: https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json
-// - Stadia Maps Outdoors: https://tiles.stadiamaps.com/styles/outdoors.json
-
-// Mapbox Streets v9 style
-// Note: Requires Mapbox access token (NEXT_PUBLIC_MAPBOX_TOKEN)
-const DEFAULT_STYLE_URL =
-  'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json'
-// const DEFAULT_STYLE_URL = 'mapbox://styles/mapbox/streets-v9'
+import { MAP_STYLE_URL } from '@/constants'
 
 export interface SosReport {
   id: string
@@ -162,6 +147,21 @@ function SosMarkersLayerInner({
     new globalThis.Map<string, SosReport>()
   )
 
+  // Store handlers in refs for cleanup (must be at component level, not inside useEffect)
+  const handlersRef = useRef<{
+    handleClusterClick: ((e: maplibregl.MapLayerMouseEvent) => void) | null
+    handlePointClick: ((e: maplibregl.MapLayerMouseEvent) => void) | null
+    handleMouseMove: ((e: maplibregl.MapLayerMouseEvent) => void) | null
+    handleMouseLeave: (() => void) | null
+    handleData: (() => void) | null
+  }>({
+    handleClusterClick: null,
+    handlePointClick: null,
+    handleMouseMove: null,
+    handleMouseLeave: null,
+    handleData: null,
+  })
+
   useEffect(() => {
     // Update lookup map when sosReports change
     if (sosReports && sosReports.length > 0) {
@@ -239,61 +239,148 @@ function SosMarkersLayerInner({
     // Handle unclustered point click - show popup
     // Optimize: Use Map lookup instead of Array.find for O(1) access
     const handlePointClick = (e: maplibregl.MapLayerMouseEvent) => {
-      if (e.features && e.features.length > 0) {
-        const feature = e.features[0]
-        if (feature.layer?.id === layers.sosUnclustered.layerId) {
-          const props = feature.properties
-          const report = sosReportsMapRef.current.get(props.id)
-          if (report) {
-            onSelectSos?.(report)
-          }
-        }
+      console.log('🔵 Click event:', e.features)
+      if (!e.features || e.features.length === 0) {
+        console.log('🔵 No features')
+        return
       }
+
+      const feature = e.features[0]
+      console.log(
+        '🔵 Feature layer ID:',
+        feature.layer?.id,
+        'Expected:',
+        layers.sosUnclustered.layerId
+      )
+      if (feature.layer?.id !== layers.sosUnclustered.layerId) {
+        console.log('🔵 Layer mismatch')
+        return
+      }
+
+      const props = feature.properties
+      console.log('🔵 Properties:', props)
+      if (!props?.id) {
+        console.log('🔵 No ID in properties')
+        return
+      }
+
+      const report = sosReportsMapRef.current.get(props.id)
+      console.log('🔵 Found report:', report)
+      if (report) {
+        console.log('🔵 Calling onSelectSos with:', report)
+        onSelectSos?.(report)
+      } else {
+        console.log('🔵 Report not found for ID:', props.id)
+      }
+
       e.preventDefault()
     }
 
-    mapInstance.on('click', layers.sosClusters.layerId, handleClusterClick)
-    mapInstance.on('click', layers.sosUnclustered.layerId, handlePointClick)
+    // Wait for layers to be loaded before attaching event handlers
+    const attachHandlers = () => {
+      const clusterLayer = mapInstance.getLayer(layers.sosClusters.layerId)
+      const unclusteredLayer = mapInstance.getLayer(
+        layers.sosUnclustered.layerId
+      )
 
-    // Optimize: Throttle mouse move events to reduce overhead
-    let mouseMoveTimeout: NodeJS.Timeout | null = null
-    const handleMouseMove = (e: maplibregl.MapLayerMouseEvent) => {
-      if (mouseMoveTimeout) return
-      mouseMoveTimeout = setTimeout(() => {
-        if (e.features && e.features.length > 0) {
-          mapInstance.getCanvas().style.cursor = 'pointer'
+      if (!clusterLayer || !unclusteredLayer) {
+        // Layers not ready yet, wait a bit
+        setTimeout(attachHandlers, 100)
+        return
+      }
+
+      // Attach click handlers - ensure layers are ready
+      mapInstance.on('click', layers.sosClusters.layerId, handleClusterClick)
+      mapInstance.on('click', layers.sosUnclustered.layerId, handlePointClick)
+
+      // Optimize: Throttle mouse move events to reduce overhead
+      let mouseMoveTimeout: NodeJS.Timeout | null = null
+      const handleMouseMove = (e: maplibregl.MapLayerMouseEvent) => {
+        if (mouseMoveTimeout) return
+        mouseMoveTimeout = setTimeout(() => {
+          if (e.features && e.features.length > 0) {
+            mapInstance.getCanvas().style.cursor = 'pointer'
+          }
+          mouseMoveTimeout = null
+        }, 16) // ~60fps throttle
+      }
+
+      const handleMouseLeave = () => {
+        if (mouseMoveTimeout) {
+          clearTimeout(mouseMoveTimeout)
+          mouseMoveTimeout = null
         }
-        mouseMoveTimeout = null
-      }, 16) // ~60fps throttle
-    }
-
-    const handleMouseLeave = () => {
-      if (mouseMoveTimeout) {
-        clearTimeout(mouseMoveTimeout)
-        mouseMoveTimeout = null
+        mapInstance.getCanvas().style.cursor = ''
       }
-      mapInstance.getCanvas().style.cursor = ''
-    }
 
-    mapInstance.on('mousemove', layers.sosClusters.layerId, handleMouseMove)
-    mapInstance.on('mousemove', layers.sosUnclustered.layerId, handleMouseMove)
-    mapInstance.on('mouseout', handleMouseLeave)
-
-    return () => {
-      if (mouseMoveTimeout) {
-        clearTimeout(mouseMoveTimeout)
-      }
-      mapInstance.off('click', layers.sosClusters.layerId, handleClusterClick)
-      mapInstance.off('click', layers.sosUnclustered.layerId, handlePointClick)
-      mapInstance.off('mousemove', layers.sosClusters.layerId, handleMouseMove)
-      mapInstance.off(
+      mapInstance.on('mousemove', layers.sosClusters.layerId, handleMouseMove)
+      mapInstance.on(
         'mousemove',
         layers.sosUnclustered.layerId,
         handleMouseMove
       )
-      mapInstance.off('mouseout', handleMouseLeave)
+      mapInstance.on('mouseout', handleMouseLeave)
     }
-  }, [map, onSelectSos]) // Removed sosReports from dependencies
+
+    // Wait for map to be ready
+    if (mapInstance.loaded()) {
+      attachHandlers()
+    } else {
+      mapInstance.once('load', attachHandlers)
+    }
+
+    // Also listen for data events to re-attach handlers when source data changes
+    const handleData = () => {
+      setTimeout(attachHandlers, 100)
+    }
+    mapInstance.on('data', handleData)
+
+    // Update handlers ref when they change
+    handlersRef.current.handleClusterClick = handleClusterClick
+    handlersRef.current.handlePointClick = handlePointClick
+    handlersRef.current.handleData = handleData
+
+    // Cleanup function
+    return () => {
+      // Remove all event listeners
+      try {
+        // Remove click handlers (need to pass handler function)
+        if (handlersRef.current.handleClusterClick) {
+          mapInstance.off(
+            'click',
+            layers.sosClusters.layerId,
+            handlersRef.current.handleClusterClick
+          )
+        }
+        if (handlersRef.current.handlePointClick) {
+          mapInstance.off(
+            'click',
+            layers.sosUnclustered.layerId,
+            handlersRef.current.handlePointClick
+          )
+        }
+        // Remove mousemove handlers if they exist
+        if (handlersRef.current.handleMouseMove) {
+          mapInstance.off(
+            'mousemove',
+            layers.sosClusters.layerId,
+            handlersRef.current.handleMouseMove
+          )
+          mapInstance.off(
+            'mousemove',
+            layers.sosUnclustered.layerId,
+            handlersRef.current.handleMouseMove
+          )
+        }
+        // Remove mouseout handler if it exists
+        if (handlersRef.current.handleMouseLeave) {
+          mapInstance.off('mouseout', handlersRef.current.handleMouseLeave)
+        }
+      } catch (err) {
+        // Ignore errors during cleanup
+      }
+    }
+  }, [map, onSelectSos]) // Removed sosReports to prevent re-attaching handlers on every data change
 
   if (!sosReports || sosReports.length === 0) {
     return null
@@ -484,6 +571,38 @@ export default function MapView({
       ? process.env.NEXT_PUBLIC_MAPBOX_TOKEN
       : process.env.NEXT_PUBLIC_MAPBOX_TOKEN
 
+  // Handle missing images to suppress warnings
+  useEffect(() => {
+    if (!mapRef.current) return
+
+    const map = mapRef.current.getMap()
+    if (!map) return
+
+    const handleStyleImageMissing = (
+      e: maplibregl.MapStyleImageMissingEvent
+    ) => {
+      // Suppress warnings for missing images by providing a transparent 1x1 image
+      const image = map.getImage(e.id)
+      if (!image) {
+        // Create a transparent 1x1 pixel image
+        const canvas = document.createElement('canvas')
+        canvas.width = 1
+        canvas.height = 1
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.clearRect(0, 0, 1, 1)
+          map.addImage(e.id, canvas)
+        }
+      }
+    }
+
+    map.on('styleimagemissing', handleStyleImageMissing)
+
+    return () => {
+      map.off('styleimagemissing', handleStyleImageMissing)
+    }
+  }, [])
+
   return (
     <Map
       ref={mapRef}
@@ -491,7 +610,7 @@ export default function MapView({
       initialViewState={viewState}
       onMove={handleMove}
       style={{ width: '100%', height: '100%' }}
-      mapStyle={DEFAULT_STYLE_URL}
+      mapStyle={MAP_STYLE_URL}
       // mapboxAccessToken={
       //   mapboxToken ||
       //   'pk.eyJ1IjoibHVjaWFuY29kZSIsImEiOiJjbWl6c2ZncjIwMG9yMnBzYWZ1bWZkYnVzIn0.B49zE90tYCj92KmYB5g8gQ'
@@ -506,7 +625,7 @@ export default function MapView({
       ]}
     >
       {/* NavigationControl removed - zoom toolbar hidden */}
-      {/* <NavigationControl position="top-left" /> */}
+      <NavigationControl position="top-left" />
 
       <RiskLayer
         riskZones={riskZones}

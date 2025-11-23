@@ -18,7 +18,8 @@ export function SosButton({ onSosSubmitted }: SosButtonProps) {
         className="fixed bottom-20 sm:bottom-7 right-6 z-50 bg-error-600 hover:bg-error-700 text-white rounded-full px-6 py-3 transition-all hover:scale-110 active:scale-95 flex items-center gap-2 text-lg font-medium"
         aria-label="Gửi SOS cứu nạn"
       >
-        <span className="hidden sm:inline">🆘 Gửi SOS</span>
+        <AlertTriangle className="size-5" />
+        <span className="hidden sm:inline">Gửi SOS</span>
         <span className="sm:hidden">SOS</span>
       </button>
 
