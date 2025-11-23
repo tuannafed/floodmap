@@ -4,7 +4,7 @@
 
 ## ✨ Tính năng
 
-- 🗺️ Bản đồ tương tác với Leaflet (React-Leaflet v5)
+- 🗺️ Bản đồ tương tác với MapLibre GL JS (react-map-gl)
 - 🌧️ Radar mưa realtime từ RainViewer
 - 📊 Dự báo mưa 15 phút từ Open-Meteo
 - 🌊 Dữ liệu triều biển từ WorldTides
@@ -99,7 +99,7 @@ Tất cả APIs đều miễn phí (trừ WorldTides cần đăng ký để có 
 ## 🛠️ Tech Stack
 
 - **Framework**: Next.js 16 (App Router) + React 19
-- **Map**: Leaflet 1.9 + React-Leaflet 5
+- **Map**: MapLibre GL JS 5.13 + react-map-gl 8.1
 - **Styling**: Tailwind CSS v4
 - **Type System**: TypeScript 5.6
 - **Package Manager**: pnpm 9

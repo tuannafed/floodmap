@@ -319,22 +319,6 @@ body {
   box-sizing: border-box;
 }
 
-/* ============================================
-   Leaflet Map Container Fixes
-   ============================================ */
-.leaflet-container {
-  height: 100%;
-  width: 100%;
-  z-index: 1;
-}
-
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  .leaflet-popup-content-wrapper {
-    /* biome-ignore lint/complexity/noImportantStyles: Required to override Leaflet default styles */
-    max-width: 250px !important;
-  }
-}
 
 /* ============================================
    Custom Utilities

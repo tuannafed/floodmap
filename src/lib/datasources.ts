@@ -35,12 +35,30 @@ export async function fetchNowcast(
   lat: number,
   lon: number
 ): Promise<NowcastData> {
-  const url = new URL('https://api.open-meteo.com/v1/forecast')
-  url.searchParams.set('latitude', String(lat))
-  url.searchParams.set('longitude', String(lon))
-  url.searchParams.set('minutely_15', 'precipitation,precipitation_probability')
-  url.searchParams.set('forecast_hours', '6')
-  return fetch(url.toString()).then((r) => r.json())
+  try {
+    const response = await fetch(
+      `/api/nowcast?lat=${lat}&lon=${lon}`,
+      {
+        signal: AbortSignal.timeout(15000), // 15 second timeout
+      }
+    )
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch nowcast: ${response.status}`)
+    }
+    
+    return await response.json()
+  } catch (error) {
+    console.error('Error fetching nowcast:', error)
+    // Return empty data structure to prevent UI crash
+    return {
+      minutely_15: {
+        time: [],
+        precipitation: [0],
+        precipitation_probability: [0],
+      },
+    }
+  }
 }
 
 export async function fetchRainviewerTimeline(): Promise<RainViewerTimeline> {
@@ -48,5 +66,22 @@ export async function fetchRainviewerTimeline(): Promise<RainViewerTimeline> {
 }
 
 export async function fetchTide(lat: number, lon: number): Promise<TideData> {
-  return fetch(`/api/tides?lat=${lat}&lon=${lon}`).then((r) => r.json())
+  try {
+    const res = await fetch(`/api/tides?lat=${lat}&lon=${lon}`, {
+      signal: AbortSignal.timeout(15000), // 15 second timeout
+    })
+    
+    if (!res.ok) {
+      throw new Error(`Failed to fetch tide: ${res.status}`)
+    }
+    
+    return await res.json()
+  } catch (error) {
+    console.error('Error fetching tide:', error)
+    // Return empty data structure to prevent UI crash
+    return {
+      extremes: [],
+      heights: [],
+    }
+  }
 }

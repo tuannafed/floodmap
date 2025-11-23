@@ -19,14 +19,52 @@ async function getTide(lat: number, lon: number) {
   const now = Math.floor(Date.now() / 1000)
   const from = now - 6 * 3600
   const to = now + 12 * 3600
-  const u = new URL('https://www.worldtides.info/api/v3/extremes')
+  const u = new URL('https://www.worldtides.info/api/v3/heights') // Use heights endpoint
   u.searchParams.set('lat', String(lat))
   u.searchParams.set('lon', String(lon))
   u.searchParams.set('start', String(from))
   u.searchParams.set('length', String(to - from))
   u.searchParams.set('key', key)
-  const r = await fetch(u.toString())
-  return r.json()
+  
+  try {
+    const r = await fetch(u.toString(), { signal: AbortSignal.timeout(30000) })
+    const text = await r.text()
+    
+    // Check if response is valid JSON
+    let json
+    try {
+      json = JSON.parse(text)
+    } catch {
+      // If not JSON (e.g., HTML 404), return empty data
+      console.warn('WorldTides API returned non-JSON response:', text.substring(0, 200))
+      return { extremes: [], heights: [] }
+    }
+    
+    // Check if API returned an error
+    if (json.error || json.status === 'error') {
+      console.warn('WorldTides API error:', json.error || json)
+      return { extremes: [], heights: [] }
+    }
+    
+    // Convert heights to extremes format if needed
+    if (json.heights && !json.extremes) {
+      const heights = json.heights || []
+      if (heights.length > 0) {
+        const sorted = [...heights].sort((a: any, b: any) => a.height - b.height)
+        return {
+          extremes: [
+            { height: sorted[0].height, time: sorted[0].dt },
+            { height: sorted[sorted.length - 1].height, time: sorted[sorted.length - 1].dt },
+          ],
+        }
+      }
+    }
+    
+    return json
+  } catch (error) {
+    console.error('Error fetching tide data from WorldTides API:', error)
+    return { extremes: [] }
+  }
 }
 
 // Use internal API endpoint for isobands (with caching)
@@ -63,9 +101,9 @@ export async function GET(req: Request) {
 
   try {
     const [nc, tide, iso] = await Promise.all([
-      getNowcast(lat, lon),
-      getTide(lat, lon),
-      getIso(lat, lon, baseUrl),
+      getNowcast(lat, lon).catch(() => ({ minutely_15: { precipitation: [0], precipitation_probability: [0] } })),
+      getTide(lat, lon).catch(() => ({ extremes: [] })),
+      getIso(lat, lon, baseUrl).catch(() => turf.featureCollection([])),
     ])
 
     if (!iso || !iso.features || iso.features.length === 0) {

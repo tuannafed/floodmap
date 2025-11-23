@@ -3,13 +3,17 @@
 import type { TideData } from '@/lib/datasources'
 import type { NowcastData } from '@/lib/datasources'
 
-interface InfoPanelProps {
+interface WeatherPanelProps {
   nowcast: NowcastData | null
   tide: TideData | null
   isLoading: boolean
 }
 
-export function InfoPanel({ nowcast, tide, isLoading }: InfoPanelProps) {
+export function WeatherPanel({
+  nowcast,
+  tide,
+  isLoading,
+}: WeatherPanelProps) {
   if (isLoading || !nowcast) return null
 
   const rain = nowcast?.minutely_15?.precipitation?.[0] ?? 0
@@ -17,7 +21,7 @@ export function InfoPanel({ nowcast, tide, isLoading }: InfoPanelProps) {
   const hasRisk = rain >= 2 && prob >= 70
 
   return (
-    <div className="absolute top-20 left-3 right-3 md:right-auto md:w-80 bg-card shadow-none rounded-md p-4 z-1000 border border-border">
+    <div className="bg-card shadow-lg rounded-lg p-4 border border-border">
       <h2 className="text-lg font-bold mb-3 text-card-foreground">
         Thông tin Thời tiết
       </h2>
