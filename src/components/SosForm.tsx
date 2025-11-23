@@ -10,6 +10,7 @@ import {
   Send,
   Navigation,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { addToQueue } from '@/lib/sos-queue'
 import { LocationPicker } from './LocationPicker'
 
@@ -30,7 +31,6 @@ export function SosForm({ isOpen, onClose, onSuccess }: SosFormProps) {
   const [hasVulnerable, setHasVulnerable] = useState(false)
   const [image, setImage] = useState<File | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Auto-get location on mount
@@ -47,11 +47,11 @@ export function SosForm({ isOpen, onClose, onSuccess }: SosFormProps) {
         },
         (err) => {
           console.error('Geolocation error:', err)
-          setError('Không thể lấy vị trí. Vui lòng bật định vị.')
+          toast.error('Không thể lấy vị trí. Vui lòng bật định vị.')
         }
       )
     } else {
-      setError('Trình duyệt không hỗ trợ định vị.')
+      toast.error('Trình duyệt không hỗ trợ định vị.')
     }
   }, [isOpen])
 
@@ -61,12 +61,11 @@ export function SosForm({ isOpen, onClose, onSuccess }: SosFormProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!location) {
-      setError('Vui lòng đợi lấy vị trí...')
+      toast.error('Vui lòng đợi lấy vị trí...')
       return
     }
 
     setIsSubmitting(true)
-    setError(null)
 
     const sosData = {
       lat: location.lat,
@@ -124,13 +123,18 @@ export function SosForm({ isOpen, onClose, onSuccess }: SosFormProps) {
       setDescription('')
       setHasVulnerable(false)
       setImage(null)
-      
+
+      // Show success toast
+      toast.success('🆘 SOS đã được gửi thành công!')
+
       // Call onSuccess callback to trigger refresh
       onSuccess?.()
       onClose()
     } catch (err) {
       console.error('Error sending SOS:', err)
-      setError(err instanceof Error ? err.message : 'Không thể gửi SOS')
+      const errorMessage =
+        err instanceof Error ? err.message : 'Không thể gửi SOS'
+      toast.error(errorMessage)
 
       // Queue for retry
       addToQueue(sosData)
@@ -300,13 +304,6 @@ export function SosForm({ isOpen, onClose, onSuccess }: SosFormProps) {
               </button>
             )}
           </div>
-
-          {/* Error Message */}
-          {error && (
-            <div className="bg-error-50 dark:bg-error-900 text-error-700 dark:text-error-300 rounded-md px-3 py-2 text-sm">
-              {error}
-            </div>
-          )}
 
           {/* Submit Button */}
           <div className="flex gap-2 pt-2">

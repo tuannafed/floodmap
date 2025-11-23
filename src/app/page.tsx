@@ -14,8 +14,9 @@ import {
   type TideData,
 } from '@/lib/datasources'
 import { LoaderCircleIcon, SearchIcon } from 'lucide-react'
-import { ToastContainer, type ToastType } from '@/components/Toast'
+import { toast } from 'sonner'
 import { BottomNavigator, type TabType } from '@/components/BottomNavigator'
+import { LocateButton } from '@/components/LocateButton'
 
 export default function Page() {
   const [activeTab, setActiveTab] = useState<TabType>('home')
@@ -24,7 +25,6 @@ export default function Page() {
     null
   )
   const [isSearching, setIsSearching] = useState(false)
-  const [searchError, setSearchError] = useState<string | null>(null)
   const [isLocating, setIsLocating] = useState(true)
 
   // Map data states
@@ -35,10 +35,10 @@ export default function Page() {
   const [sosReports, setSosReports] = useState<any[]>([])
   const [selectedSos, setSelectedSos] = useState<any | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [toasts, setToasts] = useState<
-    Array<{ id: string; message: string; type: ToastType }>
-  >([])
+  const [userLocation, setUserLocation] = useState<{
+    lat: number
+    lon: number
+  } | null>(null)
 
   // Layer visibility states
   // Note: Radar temporarily disabled due to CORS restrictions from RainViewer
@@ -53,6 +53,43 @@ export default function Page() {
   useEffect(() => {
     centerRef.current = center
   }, [center])
+
+  // Prevent body scroll on mobile when panels are open
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const isMobile = window.innerWidth < 768 // md breakpoint
+    const hasOpenPanel = activeTab === 'sos' || activeTab === 'weather'
+
+    if (isMobile && hasOpenPanel) {
+      // Save current scroll position
+      const scrollY = window.scrollY
+
+      // Lock body scroll
+      document.body.style.overflow = 'hidden'
+      document.body.style.position = 'fixed'
+      document.body.style.top = `-${scrollY}px`
+      document.body.style.width = '100%'
+      document.documentElement.style.overflow = 'hidden'
+
+      return () => {
+        // Restore scroll position when unlocking
+        document.body.style.overflow = ''
+        document.body.style.position = ''
+        document.body.style.top = ''
+        document.body.style.width = ''
+        document.documentElement.style.overflow = ''
+        window.scrollTo(0, scrollY)
+      }
+    } else {
+      // Unlock body scroll
+      document.body.style.overflow = ''
+      document.body.style.position = ''
+      document.body.style.top = ''
+      document.body.style.width = ''
+      document.documentElement.style.overflow = ''
+    }
+  }, [activeTab])
 
   useEffect(() => {
     // Try to get user location first, fallback to default
@@ -74,7 +111,7 @@ export default function Page() {
               setIsLocating(false)
             })
             .catch(() => {
-              setSearchError('Không thể tải vị trí mặc định')
+              toast.error('Không thể tải vị trí mặc định')
               setIsSearching(false)
               setIsLocating(false)
             })
@@ -91,7 +128,7 @@ export default function Page() {
           setIsLocating(false)
         })
         .catch(() => {
-          setSearchError('Không thể tải vị trí mặc định')
+          toast.error('Không thể tải vị trí mặc định')
           setIsSearching(false)
           setIsLocating(false)
         })
@@ -108,7 +145,6 @@ export default function Page() {
 
     let active = true
     setIsLoading(true)
-    setError(null)
 
     async function pull() {
       try {
@@ -159,7 +195,7 @@ export default function Page() {
         setIsLoading(false)
       } catch (err) {
         if (!active) return
-        setError('Không thể tải dữ liệu. Vui lòng thử lại.')
+        toast.error('Không thể tải dữ liệu. Vui lòng thử lại.')
         setIsLoading(false)
         console.error('Error fetching data:', err)
       }
@@ -176,11 +212,10 @@ export default function Page() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!q.trim()) {
-      setSearchError('Vui lòng nhập tên tỉnh/thành phố')
+      toast.error('Vui lòng nhập tên tỉnh/thành phố')
       return
     }
     setIsSearching(true)
-    setSearchError(null)
     try {
       const c = await geocodeProvince(q)
       if (c) {
@@ -189,11 +224,12 @@ export default function Page() {
         setCenter(c)
         // Clear selected SOS when searching new location
         setSelectedSos(null)
+        toast.success('Đã tìm thấy địa điểm')
       } else {
-        setSearchError('Không tìm thấy địa điểm. Vui lòng thử lại.')
+        toast.error('Không tìm thấy địa điểm. Vui lòng thử lại.')
       }
     } catch (err) {
-      setSearchError('Có lỗi xảy ra khi tìm kiếm')
+      toast.error('Có lỗi xảy ra khi tìm kiếm')
       console.error(err)
     } finally {
       setIsSearching(false)
@@ -213,11 +249,10 @@ export default function Page() {
           value={q}
           onChange={(e) => {
             setQ(e.target.value)
-            setSearchError(null)
           }}
           placeholder="Nhập tỉnh/thành phố..."
           disabled={isSearching}
-          className="border border-input rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-ring bg-background text-foreground disabled:opacity-50 min-w-[300px] md:min-w-[300px]"
+          className="border border-input rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-ring bg-background text-foreground disabled:opacity-50 min-w-[300px] md:min-w-[400px]"
         />
         <button
           type="submit"
@@ -234,12 +269,15 @@ export default function Page() {
         </button>
       </form>
 
-      {/* Error Message */}
-      {searchError && (
-        <div className="absolute top-20 left-3 z-2000 bg-error-50 dark:bg-error-900 text-error-700 dark:text-error-300 border border-error-200 dark:border-error-800 rounded-lg px-4 py-1 shadow-lg max-w-md">
-          <p className="text-sm font-medium">{searchError}</p>
-        </div>
-      )}
+      {/* Locate User Button */}
+      <LocateButton
+        onLocationChange={(location) => {
+          centerRef.current = location
+          setCenter(location)
+        }}
+        onUserLocationChange={setUserLocation}
+        onClearSelectedSos={() => setSelectedSos(null)}
+      />
 
       {/* Map View */}
       {center ? (
@@ -253,6 +291,7 @@ export default function Page() {
             showRadar={showRadar}
             showDEM={showDEM}
             showRisk={showRisk}
+            userLocation={userLocation}
             onMove={(viewState) => {
               // Optional: handle map movement
             }}
@@ -260,7 +299,12 @@ export default function Page() {
           />
 
           {/* Desktop Sidebar - Always visible on desktop */}
-          <div className="hidden md:block absolute top-6 right-3 z-1000 space-y-3 max-w-xs">
+          <div className="hidden md:block absolute top-6 right-6 z-50 space-y-3 max-w-xs">
+            <WeatherPanel
+              nowcast={nowcast}
+              tide={tide}
+              isLoading={isLoading}
+            />
             <LayerToggles
               showRadar={showRadar}
               showDEM={showDEM}
@@ -269,36 +313,31 @@ export default function Page() {
               onToggleDEM={setShowDEM}
               onToggleRisk={setShowRisk}
             />
-            <WeatherPanel
-              nowcast={nowcast}
-              tide={tide}
-              isLoading={isLoading}
-            />
           </div>
 
-          {/* Mobile Tab Content Panels */}
-          {/* Weather & Layers Panel - Mobile only */}
           {activeTab === 'weather' && (
-            <div className="md:hidden absolute bottom-16 left-0 right-0 z-1000 bg-card border-t border-border shadow-lg max-h-[60vh] overflow-y-auto pb-safe">
-              <div className="p-4 space-y-3">
-                <LayerToggles
-                  showRadar={showRadar}
-                  showDEM={showDEM}
-                  showRisk={showRisk}
-                  onToggleRadar={setShowRadar}
-                  onToggleDEM={setShowDEM}
-                  onToggleRisk={setShowRisk}
-                />
-                <WeatherPanel
-                  nowcast={nowcast}
-                  tide={tide}
-                  isLoading={isLoading}
-                />
+            <div className="md:hidden fixed inset-0 top-0 bottom-16 z-1000 bg-card overflow-hidden flex flex-col">
+              <div className="flex-1 overflow-y-auto">
+                <div className="p-4 space-y-3">
+                  <WeatherPanel
+                    nowcast={nowcast}
+                    tide={tide}
+                    isLoading={isLoading}
+                  />
+                  {/* Lớp bản đồ */}
+                  <LayerToggles
+                    showRadar={showRadar}
+                    showDEM={showDEM}
+                    showRisk={showRisk}
+                    onToggleRadar={setShowRadar}
+                    onToggleDEM={setShowDEM}
+                    onToggleRisk={setShowRisk}
+                  />
+                </div>
               </div>
             </div>
           )}
 
-          {/* SOS List Panel - Mobile only */}
           {activeTab === 'sos' && (
             <div className="md:hidden fixed inset-0 top-0 bottom-16 z-1000 bg-card overflow-hidden flex flex-col">
               <div className="shrink-0 p-4 border-b border-border">
@@ -306,8 +345,8 @@ export default function Page() {
                   Danh sách SOS ({sosReports.length})
                 </h2>
               </div>
-              <div className="flex-1 overflow-y-auto">
-                <div className="p-4">
+              <div className="flex-1 overflow-y-auto overflow-x-hidden">
+                <div className="p-4 relative">
                   <SosListPanel
                     inline={true}
                     sosReports={sosReports}
@@ -325,13 +364,6 @@ export default function Page() {
               </div>
             </div>
           )}
-
-          {/* Error Message */}
-          {error && (
-            <div className="absolute top-20 right-3 bg-error-50 dark:bg-error-900 text-error-700 dark:text-error-300 border border-error-200 dark:border-error-800 rounded-lg px-4 py-2 shadow-lg z-1000 max-w-sm">
-              <p className="text-sm font-medium">{error}</p>
-            </div>
-          )}
         </>
       ) : (
         <div className="w-full h-screen bg-background flex items-center justify-center">
@@ -345,11 +377,6 @@ export default function Page() {
       {/* SOS Button */}
       <SosButton
         onSosSubmitted={() => {
-          const id = Date.now().toString()
-          setToasts([
-            ...toasts,
-            { id, message: '🆘 SOS đã được gửi thành công!', type: 'success' },
-          ])
           // Refresh SOS reports immediately
           fetch(`/api/sos/report`)
             .then((r) => r.json())
@@ -382,12 +409,6 @@ export default function Page() {
           }}
         />
       </div>
-
-      {/* Toast Container */}
-      <ToastContainer
-        toasts={toasts}
-        onRemove={(id) => setToasts(toasts.filter((t) => t.id !== id))}
-      />
     </div>
   )
 }

@@ -60,6 +60,7 @@ interface MapViewProps {
   showRadar?: boolean
   showDEM?: boolean
   showRisk?: boolean
+  userLocation?: { lat: number; lon: number } | null
   onMove?: (viewState: {
     latitude: number
     longitude: number
@@ -405,7 +406,7 @@ function SosMarkersLayerInner({
           }}
         />
 
-        {/* Unclustered points */}
+        {/* Unclustered points - Circular markers */}
         <Layer
           id={layers.sosUnclustered.layerId}
           type="circle"
@@ -415,17 +416,19 @@ function SosMarkersLayerInner({
               'match',
               ['get', 'urgency'],
               'high',
-              10,
+              12,
               'medium',
-              8,
+              10,
               'low',
-              6,
               8,
+              10,
             ],
             'circle-color': sosStatusColorExpression as any,
             'circle-stroke-color': '#ffffff',
-            'circle-stroke-width': 2,
-            'circle-opacity': 0.9,
+            'circle-stroke-width': 3,
+            'circle-opacity': 1,
+            'circle-pitch-scale': 'viewport',
+            'circle-pitch-alignment': 'map',
           }}
         />
       </Source>
@@ -442,6 +445,7 @@ export default function MapView({
   showRadar = true,
   showDEM = false,
   showRisk = true,
+  userLocation,
   onMove,
   onSosSelect,
 }: MapViewProps) {
@@ -457,11 +461,33 @@ export default function MapView({
   const prevCenterRef = useRef<{ lat: number; lon: number }>(center)
   const isFlyingRef = useRef(false)
 
-  // Fly to center when it changes (e.g., from search)
-  // Skip if we're already flying to a selected SOS
+  // Fly to user location when locate button is clicked (higher zoom)
   useEffect(() => {
-    // Don't fly if there's a selected SOS (let that effect handle it)
-    if (selectedSos) return
+    if (userLocation && mapRef.current && !isFlyingRef.current) {
+      const map = mapRef.current.getMap()
+      if (map) {
+        isFlyingRef.current = true
+        // Fly to user location with higher zoom for precise location
+        map.flyTo({
+          center: [userLocation.lon, userLocation.lat],
+          zoom: 16, // Higher zoom for user's current location
+          duration: 1500,
+          essential: true,
+        })
+
+        // Reset flying flag after animation
+        setTimeout(() => {
+          isFlyingRef.current = false
+        }, 1600)
+      }
+    }
+  }, [userLocation])
+
+  // Fly to center when it changes (e.g., from search)
+  // Skip if we're already flying to a selected SOS or user location
+  useEffect(() => {
+    // Don't fly if there's a selected SOS or user location (let those effects handle it)
+    if (selectedSos || userLocation) return
 
     const prevCenter = prevCenterRef.current
     const hasCenterChanged =
@@ -487,7 +513,7 @@ export default function MapView({
       }
       prevCenterRef.current = center
     }
-  }, [center.lat, center.lon, selectedSos])
+  }, [center.lat, center.lon, selectedSos, userLocation])
 
   const handleMove = (evt: any) => {
     if (evt.viewState) {

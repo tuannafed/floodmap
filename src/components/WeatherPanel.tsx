@@ -9,11 +9,7 @@ interface WeatherPanelProps {
   isLoading: boolean
 }
 
-export function WeatherPanel({
-  nowcast,
-  tide,
-  isLoading,
-}: WeatherPanelProps) {
+export function WeatherPanel({ nowcast, tide, isLoading }: WeatherPanelProps) {
   if (isLoading || !nowcast) return null
 
   const rain = nowcast?.minutely_15?.precipitation?.[0] ?? 0
@@ -21,7 +17,7 @@ export function WeatherPanel({
   const hasRisk = rain >= 2 && prob >= 70
 
   return (
-    <div className="bg-card shadow-lg rounded-lg p-4 border border-border">
+    <div className="bg-card shadow-md rounded-md p-4 border border-border">
       <h2 className="text-lg font-bold mb-3 text-card-foreground">
         Thông tin Thời tiết
       </h2>
@@ -63,4 +59,3 @@ export function WeatherPanel({
     </div>
   )
 }
-

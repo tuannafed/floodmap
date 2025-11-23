@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Map, Source, Layer, Marker, useMap } from 'react-map-gl/maplibre'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { X, MapPin } from 'lucide-react'
+import { X, MapPin, PersonStanding } from 'lucide-react'
 
 // Mapbox Streets v9 style
 // Note: Requires Mapbox access token (NEXT_PUBLIC_MAPBOX_TOKEN)
@@ -57,7 +57,7 @@ function DraggableMarker({
       }}
     >
       <div className="relative">
-        <MapPin
+        <PersonStanding
           className={`size-8 text-error-600 transition-transform ${
             isDragging ? 'scale-125' : ''
           }`}
@@ -120,9 +120,9 @@ export function LocationPicker({
 
   return (
     <div className="fixed inset-0 z-4000 bg-black/50 flex items-center justify-center p-4">
-      <div className="bg-card rounded-lg shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col">
+      <div className="bg-card overflow-hidden rounded-sm shadow-2xl w-full max-w-6xl h-[90vh] sm:h-[84vh] flex flex-col">
         {/* Header */}
-        <div className="sticky top-0 bg-card border-b border-border p-4 flex items-center justify-between z-10">
+        <div className="sticky top-0 bg-card border-b border-border p-6 flex items-center justify-between z-10">
           <div className="flex items-center gap-2">
             <MapPin className="size-5 text-primary" />
             <h2 className="text-xl font-bold text-card-foreground">
@@ -175,8 +175,8 @@ export function LocationPicker({
         </div>
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-card border-t border-border p-4 flex items-center justify-between gap-4">
-          <div className="text-sm text-muted-foreground">
+        <div className="sticky bottom-0 bg-card border-t border-border p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="text-sm">
             <p>
               <strong>Vị trí đã chọn:</strong> {location.lat.toFixed(6)},{' '}
               {location.lon.toFixed(6)}
@@ -185,13 +185,13 @@ export function LocationPicker({
           <div className="flex gap-2">
             <button
               onClick={onClose}
-              className="px-4 py-2 border border-border rounded-md hover:bg-muted transition-colors"
+              className="px-4 py-1.5 border border-border rounded-md hover:bg-muted transition-colors"
             >
               Hủy
             </button>
             <button
               onClick={handleConfirm}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary-700 transition-colors font-medium"
+              className="px-4 py-1.5 bg-primary text-primary-foreground rounded-md hover:bg-primary-700 transition-colors font-medium"
             >
               Xác nhận vị trí
             </button>

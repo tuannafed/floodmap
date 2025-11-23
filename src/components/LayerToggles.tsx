@@ -18,7 +18,7 @@ export function LayerToggles({
   onToggleRisk,
 }: LayerTogglesProps) {
   return (
-    <div className="bg-card shadow-lg rounded-lg p-3 border border-border">
+    <div className="bg-card shadow-md rounded-md p-3 border border-border">
       <h3 className="text-sm font-bold mb-2 text-card-foreground">
         Lớp Bản đồ
       </h3>
@@ -60,4 +60,3 @@ export function LayerToggles({
     </div>
   )
 }
-
