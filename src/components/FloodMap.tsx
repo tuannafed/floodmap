@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import {
   fetchNowcast,
@@ -9,6 +9,10 @@ import {
   type NowcastData,
   type TideData,
 } from '@/lib/datasources'
+import { LocationMarker } from './LocationMarker'
+import { MapLayers } from './map/MapLayers'
+import { WeatherMarker } from './map/WeatherMarker'
+import { InfoPanel } from './map/InfoPanel'
 
 const VN_BOUNDS: [[number, number], [number, number]] = [
   [7.5, 102],
@@ -31,42 +35,32 @@ const MapContainer = dynamic(
   }
 )
 
-const TileLayer = dynamic(
-  async () => {
-    const { TileLayer: TL } = await import('react-leaflet')
-    return { default: TL }
-  },
-  { ssr: false }
-)
-
-const Marker = dynamic(
-  async () => {
-    const { Marker: M } = await import('react-leaflet')
-    return { default: M }
-  },
-  { ssr: false }
-)
-
-const Popup = dynamic(
-  async () => {
-    const { Popup: P } = await import('react-leaflet')
-    return { default: P }
-  },
-  { ssr: false }
-)
-
 export default function FloodMap({
   center,
+  onLocationChange,
 }: {
   center: { lat: number; lon: number }
+  onLocationChange?: (lat: number, lon: number) => void
 }) {
   const [nowcast, setNowcast] = useState<NowcastData | null>(null)
   const [rvFrame, setRvFrame] = useState<number | null>(null)
-  const [rvTemplate, setRvTemplate] = useState<string | null>(null)
   const [tide, setTide] = useState<TideData | null>(null)
   const [isClient, setIsClient] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [iso, setIso] = useState<any | null>(null)
+  const [riskZones, setRiskZones] = useState<any | null>(null)
+  const [radarUrl, setRadarUrl] = useState<string | null>(null)
+
+  // Use refs to prevent loop calls
+  const centerRef = useRef(center)
+  const onLocationChangeRef = useRef(onLocationChange)
+
+  // Update refs when props change
+  useEffect(() => {
+    centerRef.current = center
+    onLocationChangeRef.current = onLocationChange
+  }, [center, onLocationChange])
 
   useEffect(() => {
     setIsClient(true)
@@ -84,26 +78,51 @@ export default function FloodMap({
     })
   }, [])
 
+  // Memoize center key to prevent unnecessary re-renders
+  const centerKey = `${center.lat.toFixed(4)}-${center.lon.toFixed(4)}`
+  const prevCenterKeyRef = useRef<string>('')
+
   useEffect(() => {
+    // Only fetch if center actually changed
+    if (prevCenterKeyRef.current === centerKey) return
+    prevCenterKeyRef.current = centerKey
+
     let active = true
     setIsLoading(true)
     setError(null)
+
     async function pull() {
       try {
-        const [nc, rv, td] = await Promise.all([
-          fetchNowcast(center.lat, center.lon),
+        const currentCenter = centerRef.current
+        const [nc, rv, td, isoRes, riskRes] = await Promise.all([
+          fetchNowcast(currentCenter.lat, currentCenter.lon),
           fetchRainviewerTimeline(),
-          fetchTide(center.lat, center.lon),
+          fetchTide(currentCenter.lat, currentCenter.lon),
+          fetch(
+            `/api/isobands?lat=${currentCenter.lat}&lon=${currentCenter.lon}&radiusKm=10&cellKm=1`
+          ).then((r) => r.json()),
+          fetch(
+            `/api/risk?lat=${currentCenter.lat}&lon=${currentCenter.lon}`
+          ).then((r) => r.json()),
         ])
         if (!active) return
         setNowcast(nc)
-        setRvTemplate(
-          'https://tilecache.rainviewer.com/v2/radar/{time}/256/{z}/{x}/{y}/2/1_1.png'
-        )
-        setRvFrame(
-          rv?.radar?.nowcast?.[0]?.time ?? rv?.radar?.past?.[0]?.time ?? null
-        )
+        // Get latest radar frame (prefer nowcast, fallback to latest past)
+        const frameTime =
+          rv?.radar?.nowcast?.[0]?.time ??
+          rv?.radar?.past?.[rv?.radar?.past?.length - 1]?.time ??
+          null
+        setRvFrame(frameTime)
+        if (frameTime && rv?.version) {
+          const version = String(rv.version).replace('.0', '').replace('.', '')
+          const url = `https://tilecache.rainviewer.com/v${version}/radar/${frameTime}/256/{z}/{x}/{y}/2/1_1.png`
+          setRadarUrl(url)
+        } else {
+          setRadarUrl(null)
+        }
         setTide(td)
+        setIso(isoRes)
+        setRiskZones(riskRes)
         setIsLoading(false)
       } catch (err) {
         if (!active) return
@@ -112,25 +131,25 @@ export default function FloodMap({
         console.error('Error fetching data:', err)
       }
     }
+
     pull()
     const id = setInterval(pull, 5 * 60 * 1000)
     return () => {
       active = false
       clearInterval(id)
     }
-  }, [center])
+  }, [centerKey])
 
-  const radarUrl = useMemo(
-    () =>
-      rvTemplate && rvFrame
-        ? rvTemplate.replace('{time}', String(rvFrame))
-        : null,
-    [rvTemplate, rvFrame]
-  )
-
-  const rain = nowcast?.minutely_15?.precipitation?.[0] ?? 0
-  const prob = nowcast?.minutely_15?.precipitation_probability?.[0] ?? 0
-  const risk = rain >= 2 && prob >= 70
+  // Prevent loop: use stable callback for LocationMarker
+  const handleLocationFound = useCallback((lat: number, lon: number) => {
+    // Only update if location actually changed significantly (>100m)
+    const current = centerRef.current
+    const distance = Math.abs(current.lat - lat) + Math.abs(current.lon - lon)
+    if (distance > 0.001) {
+      // ~100m threshold
+      onLocationChangeRef.current?.(lat, lon)
+    }
+  }, [])
 
   if (!isClient) {
     return (
@@ -151,104 +170,31 @@ export default function FloodMap({
         maxBounds={VN_BOUNDS}
         scrollWheelZoom
         style={{ width: '100%', height: '100%' }}
-        key={`${center.lat}-${center.lon}`}
+        key={centerKey}
       >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          maxZoom={19}
+        <MapLayers
+          radarUrl={radarUrl}
+          iso={iso}
+          riskZones={riskZones}
         />
-        {radarUrl && (
-          <TileLayer
-            url={radarUrl}
-            opacity={0.6}
-            zIndex={1000}
-            attribution="RainViewer"
-          />
-        )}
-        <Marker position={[center.lat, center.lon]}>
-          <Popup className="text-sm">
-            <div className="min-w-[200px]">
-              <h3 className="font-bold text-base mb-2">Thông tin Ngập Lụt</h3>
-              <div className="space-y-1">
-                <div>
-                  <span className="font-semibold">Vị trí:</span>{' '}
-                  {center.lat.toFixed(4)}, {center.lon.toFixed(4)}
-                </div>
-                <div>
-                  <span className="font-semibold">Mưa:</span> {rain.toFixed(1)}{' '}
-                  mm/h ({prob}%)
-                </div>
-                {tide?.extremes?.[0] && (
-                  <div>
-                    <span className="font-semibold">Triều:</span>{' '}
-                    {tide.extremes[0].height.toFixed(2)} m
-                  </div>
-                )}
-                <div className="mt-2 pt-2 border-t">
-                  <span className="font-semibold">Trạng thái:</span>{' '}
-                  <span
-                    className={
-                      risk
-                        ? 'text-error-600 font-bold'
-                        : 'text-success-600 font-bold'
-                    }
-                  >
-                    {risk ? '⚠️ Nguy cơ ngập' : '✅ Ổn định'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </Popup>
-        </Marker>
+
+        <WeatherMarker
+          center={center}
+          nowcast={nowcast}
+          tide={tide}
+        />
+
+        <LocationMarker onLocationFound={handleLocationFound} />
       </MapContainer>
 
-      {/* Info Panel */}
-      {!isLoading && nowcast && (
-        <div className="absolute top-20 left-3 right-3 md:right-auto md:w-80 bg-card shadow-xl rounded-2xl p-4 z-[1000] border border-border">
-          <h2 className="text-lg font-bold mb-3 text-card-foreground">
-            Thông tin Thời tiết
-          </h2>
-          <div className="space-y-2 text-sm text-card-foreground">
-            <div className="flex justify-between items-center">
-              <span className="text-muted-foreground">Mưa hiện tại:</span>
-              <span className="font-semibold">{rain.toFixed(1)} mm/h</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-muted-foreground">Xác suất mưa:</span>
-              <span className="font-semibold">{prob}%</span>
-            </div>
-            {tide?.extremes?.[0] && (
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Mực nước triều:</span>
-                <span className="font-semibold">
-                  {tide.extremes[0].height.toFixed(2)} m
-                </span>
-              </div>
-            )}
-            <div className="pt-2 mt-2 border-t border-border">
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Cảnh báo:</span>
-                <span
-                  className={`font-bold text-base px-3 py-1 rounded-lg ${
-                    risk
-                      ? 'bg-error-100 text-error-700 dark:bg-error-900 dark:text-error-300'
-                      : 'bg-success-100 text-success-700 dark:bg-success-900 dark:text-success-300'
-                  }`}
-                >
-                  {risk ? '⚠️ Nguy cơ ngập' : '✅ Ổn định'}
-                </span>
-              </div>
-            </div>
-            <div className="text-xs text-muted-foreground mt-3 pt-2 border-t border-border">
-              Cập nhật mỗi 5 phút
-            </div>
-          </div>
-        </div>
-      )}
+      <InfoPanel
+        nowcast={nowcast}
+        tide={tide}
+        isLoading={isLoading}
+      />
 
       {error && (
-        <div className="absolute top-20 right-3 bg-error-50 dark:bg-error-900 text-error-700 dark:text-error-300 border border-error-200 dark:border-error-800 rounded-lg px-4 py-2 shadow-lg z-[1000] max-w-sm">
+        <div className="absolute top-20 right-3 bg-error-50 dark:bg-error-900 text-error-700 dark:text-error-300 border border-error-200 dark:border-error-800 rounded-lg px-4 py-2 shadow-lg z-1000 max-w-sm">
           <p className="text-sm font-medium">{error}</p>
         </div>
       )}
