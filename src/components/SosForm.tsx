@@ -124,6 +124,9 @@ export function SosForm({ isOpen, onClose, onSuccess }: SosFormProps) {
       setDescription('')
       setHasVulnerable(false)
       setImage(null)
+      
+      // Call onSuccess callback to trigger refresh
+      onSuccess?.()
       onClose()
     } catch (err) {
       console.error('Error sending SOS:', err)

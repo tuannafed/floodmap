@@ -54,31 +54,22 @@ export function SosPopup({ report, onClose }: SosPopupProps) {
   }
 
   return (
-    <div className="bg-card rounded-lg shadow-xl border border-border p-4 max-w-sm w-full">
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-2xl">🆘</span>
-            <span
-              className={`font-bold text-sm ${
-                statusColors[report.status as SosStatus]
-              }`}
-            >
-              {statusLabels[report.status as SosStatus]}
-            </span>
-          </div>
-          <div className="text-xs text-muted-foreground flex items-center gap-1">
-            <Clock className="size-3" />
-            {formatTime(report.createdAt)}
-          </div>
+    <div className="p-2 max-w-[300px] w-full">
+      <div className="mb-3">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-2xl">🆘</span>
+          <span
+            className={`font-bold text-sm ${
+              statusColors[report.status as SosStatus]
+            }`}
+          >
+            {statusLabels[report.status as SosStatus]}
+          </span>
         </div>
-        <button
-          onClick={onClose}
-          className="text-muted-foreground hover:text-foreground"
-          aria-label="Đóng"
-        >
-          ×
-        </button>
+        <div className="text-xs text-muted-foreground flex items-center gap-1">
+          <Clock className="size-3" />
+          {formatTime(report.createdAt)}
+        </div>
       </div>
 
       <div className="space-y-2 text-sm">

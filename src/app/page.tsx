@@ -124,9 +124,7 @@ export default function Page() {
           fetch(`/api/risk?lat=${currentCenter.lat}&lon=${currentCenter.lon}`)
             .then((r) => r.json())
             .catch(() => ({ type: 'FeatureCollection', features: [] })),
-          fetch(
-            `/api/sos/report?lat=${currentCenter.lat}&lon=${currentCenter.lon}&radius=50`
-          )
+          fetch(`/api/sos/report`)
             .then((r) => r.json())
             .catch(() => ({ reports: [] })),
         ])
@@ -184,7 +182,11 @@ export default function Page() {
     try {
       const c = await geocodeProvince(q)
       if (c) {
+        // Update center ref immediately for smooth transition
+        centerRef.current = c
         setCenter(c)
+        // Clear selected SOS when searching new location
+        setSelectedSos(null)
       } else {
         setSearchError('Không tìm thấy địa điểm. Vui lòng thử lại.')
       }
@@ -313,17 +315,11 @@ export default function Page() {
             ...toasts,
             { id, message: '🆘 SOS đã được gửi thành công!', type: 'success' },
           ])
-          // Refresh SOS reports after 1 second
-          setTimeout(() => {
-            if (center) {
-              fetch(
-                `/api/sos/report?lat=${center.lat}&lon=${center.lon}&radius=50`
-              )
-                .then((r) => r.json())
-                .then((data) => setSosReports(data?.reports || []))
-                .catch(() => {})
-            }
-          }, 1000)
+          // Refresh SOS reports immediately
+          fetch(`/api/sos/report`)
+            .then((r) => r.json())
+            .then((data) => setSosReports(data?.reports || []))
+            .catch(() => {})
         }}
       />
 

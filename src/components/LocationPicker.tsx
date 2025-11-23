@@ -6,8 +6,9 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { X, MapPin } from 'lucide-react'
 
-const DEFAULT_STYLE_URL =
-  'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json'
+// Mapbox Streets v9 style
+// Note: Requires Mapbox access token (NEXT_PUBLIC_MAPBOX_TOKEN)
+const DEFAULT_STYLE_URL = 'mapbox://styles/mapbox/streets-v9'
 
 interface LocationPickerProps {
   isOpen: boolean
@@ -143,9 +144,14 @@ export function LocationPicker({
             onMove={(evt) => setViewState(evt.viewState)}
             style={{ width: '100%', height: '100%' }}
             mapStyle={DEFAULT_STYLE_URL}
+            // mapboxAccessToken={
+            //   typeof window !== 'undefined'
+            //     ? process.env.NEXT_PUBLIC_MAPBOX_TOKEN
+            //     : process.env.NEXT_PUBLIC_MAPBOX_TOKEN
+            // }
             maxBounds={[
-              [102, 7.5], // Southwest
-              [110, 23.5], // Northeast
+              [100, 6.0], // Southwest (mở rộng về phía Tây và Nam)
+              [112, 25.0], // Northeast (mở rộng về phía Đông và Bắc)
             ]}
           >
             <DraggableMarker
@@ -193,4 +199,3 @@ export function LocationPicker({
     </div>
   )
 }
-

@@ -29,12 +29,15 @@ import { SosPopup } from './SosPopup'
 // - Carto Positron (light): https://basemaps.cartocdn.com/gl/positron-gl-style/style.json
 // - Carto Dark Matter (dark): https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json
 // - OpenStreetMap: https://demotiles.maplibre.org/style.json
-// - Stadia Maps Alidade Smooth (light): https://tiles.stadiamaps.com/styles/alidade_smooth.json
+// - Stadia Maps Alidade Smooth (light, giống Mapbox Streets): https://tiles.stadiamaps.com/styles/alidade_smooth.json
 // - Stadia Maps Alidade Smooth Dark: https://tiles.stadiamaps.com/styles/alidade_smooth_dark.json
 // - Stadia Maps Outdoors: https://tiles.stadiamaps.com/styles/outdoors.json
 
+// Mapbox Streets v9 style
+// Note: Requires Mapbox access token (NEXT_PUBLIC_MAPBOX_TOKEN)
 const DEFAULT_STYLE_URL =
   'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json'
+// const DEFAULT_STYLE_URL = 'mapbox://styles/mapbox/streets-v9'
 
 export interface SosReport {
   id: string
@@ -435,7 +438,7 @@ function SosMarkersLayerInner({
           anchor="bottom"
           onClose={() => onSelectSos?.(null)}
           closeButton={false}
-          closeOnClick={false}
+          closeOnClick={true}
         >
           <SosPopup
             report={selectedSos}
@@ -468,15 +471,40 @@ export default function MapView({
   })
 
   const mapRef = useRef<any>(null)
+  const prevCenterRef = useRef<{ lat: number; lon: number }>(center)
+  const isFlyingRef = useRef(false)
 
+  // Fly to center when it changes (e.g., from search)
+  // Skip if we're already flying to a selected SOS
   useEffect(() => {
-    setViewState((prev) => ({
-      ...prev,
-      latitude: center.lat,
-      longitude: center.lon,
-      zoom: prev.zoom < 14 ? 14 : prev.zoom, // Ensure zoom is at least 14 for SOS detail view
-    }))
-  }, [center.lat, center.lon])
+    // Don't fly if there's a selected SOS (let that effect handle it)
+    if (selectedSos) return
+
+    const prevCenter = prevCenterRef.current
+    const hasCenterChanged =
+      Math.abs(prevCenter.lat - center.lat) > 0.001 ||
+      Math.abs(prevCenter.lon - center.lon) > 0.001
+
+    if (hasCenterChanged && mapRef.current && !isFlyingRef.current) {
+      const map = mapRef.current.getMap()
+      if (map) {
+        isFlyingRef.current = true
+        // Fly to new location with smooth animation
+        map.flyTo({
+          center: [center.lon, center.lat],
+          zoom: 13, // Good zoom level for city/province view
+          duration: 1500, // Smooth animation
+          essential: true, // Animation is essential
+        })
+
+        // Reset flying flag after animation
+        setTimeout(() => {
+          isFlyingRef.current = false
+        }, 1600)
+      }
+      prevCenterRef.current = center
+    }
+  }, [center.lat, center.lon, selectedSos])
 
   const handleMove = (evt: any) => {
     if (evt.viewState) {
@@ -490,14 +518,27 @@ export default function MapView({
     if (selectedSos && mapRef.current) {
       const map = mapRef.current.getMap()
       if (map) {
+        isFlyingRef.current = true
         map.flyTo({
           center: [selectedSos.lon, selectedSos.lat],
           zoom: 15,
           duration: 1000, // Animation duration in ms
+          essential: true,
         })
+
+        // Reset flying flag after animation
+        setTimeout(() => {
+          isFlyingRef.current = false
+        }, 1100)
       }
     }
   }, [selectedSos])
+
+  // Get Mapbox token from environment variable
+  const mapboxToken =
+    typeof window !== 'undefined'
+      ? process.env.NEXT_PUBLIC_MAPBOX_TOKEN
+      : process.env.NEXT_PUBLIC_MAPBOX_TOKEN
 
   return (
     <Map
@@ -507,9 +548,13 @@ export default function MapView({
       onMove={handleMove}
       style={{ width: '100%', height: '100%' }}
       mapStyle={DEFAULT_STYLE_URL}
+      // mapboxAccessToken={
+      //   mapboxToken ||
+      //   'pk.eyJ1IjoibHVjaWFuY29kZSIsImEiOiJjbWl6c2ZncjIwMG9yMnBzYWZ1bWZkYnVzIn0.B49zE90tYCj92KmYB5g8gQ'
+      // }
       maxBounds={[
-        [102, 7.5], // Southwest
-        [110, 23.5], // Northeast
+        [100, 6.0], // Southwest (mở rộng về phía Tây và Nam)
+        [112, 25.0], // Northeast (mở rộng về phía Đông và Bắc)
       ]}
       interactiveLayerIds={[
         layers.sosClusters.layerId,

@@ -26,21 +26,55 @@
 pnpm install
 ```
 
-### Bước 2: Cấu hình API Key (Tùy chọn)
+### Bước 2: Setup Supabase (Database)
 
-Tạo file `.env.local`:
+1. **Tạo tài khoản Supabase miễn phí**: [supabase.com](https://supabase.com)
+
+2. **Tạo project mới** và lấy credentials:
+   - Project URL (ví dụ: `https://xxxxx.supabase.co`)
+   - Anon/Public Key (trong Settings > API)
+   - Service Role Key (trong Settings > API, chỉ dùng server-side)
+
+3. **Chạy SQL migrations**:
+   - Mở SQL Editor trong Supabase Dashboard
+   - Chạy file `supabase/migrations/001_create_sos_reports.sql`
+   - Chạy file `supabase/migrations/002_create_storage_bucket.sql`
+
+4. **Tạo Storage Bucket** (nếu chưa tự động tạo):
+   - Vào Storage trong Dashboard
+   - Tạo bucket mới tên `sos-images`
+   - Set public: `true`
+
+### Bước 3: Cấu hình Environment Variables
+
+Tạo file `.env.local` trong thư mục gốc:
+
+**Lưu ý**: Mapbox Streets style cần Mapbox access token. Bạn có thể:
+- Lấy token miễn phí tại [mapbox.com](https://account.mapbox.com/access-tokens/)
+- Hoặc thay đổi style sang free alternatives (Stadia Maps, Carto) trong code
 
 ```bash
-cp .env.local.example .env.local
+touch .env.local
 ```
 
-Thêm WorldTides API key vào `.env.local`:
+Thêm các biến môi trường sau vào `.env.local`:
 
-```
-WORLDTIDES_KEY=your_worldtides_key_here
+```env
+# Supabase Configuration (Required)
+NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
+
+# WorldTides API Key (Tùy chọn)
+# Lấy key miễn phí tại: https://www.worldtides.info/apidocs
+WORLDTIDES_KEY=your_worldtides_api_key_here
 ```
 
-> **Lưu ý**: WorldTides API key là tùy chọn. Nếu không có key, ứng dụng vẫn hoạt động nhưng sẽ không hiển thị dữ liệu triều biển. Bạn có thể lấy key miễn phí tại [worldtides.info](https://www.worldtides.info/).
+> **Lưu ý**: 
+> - Supabase credentials là **bắt buộc** để lưu trữ SOS reports.
+> - `WORLDTIDES_KEY` là tùy chọn. Nếu không có key, ứng dụng vẫn hoạt động nhưng sẽ không hiển thị dữ liệu triều biển.
+> - Các API khác (RainViewer, Open-Meteo, Nominatim) đều miễn phí và không cần key.
+> - File `.env.local` đã được thêm vào `.gitignore` để bảo mật.
 
 ### Bước 3: Chạy ứng dụng
 
@@ -110,7 +144,19 @@ Tất cả APIs đều miễn phí (trừ WorldTides cần đăng ký để có 
 - Ứng dụng mặc định hiển thị Đà Nẵng khi khởi động
 - Dữ liệu triều chỉ hiển thị nếu có WorldTides API key
 - Radar mưa có độ trễ khoảng 5-10 phút so với thời gian thực
-- Bản đồ được giới hạn trong phạm vi Việt Nam (bounds: 7.5-23.5°N, 102-110°E)
+- Bản đồ được giới hạn trong phạm vi Việt Nam và vùng lân cận (bounds: 6.0-25.0°N, 100-112°E)
+
+## 🚀 Deploy lên Vercel
+
+Xem hướng dẫn chi tiết trong [VERCEL_DEPLOY.md](./VERCEL_DEPLOY.md)
+
+**Tóm tắt nhanh**:
+1. Push code lên GitHub/GitLab
+2. Import project vào Vercel
+3. Thêm Environment Variables (Supabase keys)
+4. Deploy!
+
+**Lưu ý**: Không cần Prisma vì đã dùng Supabase (có PostgreSQL client sẵn).
 
 ## 🔮 Tính năng tương lai
 

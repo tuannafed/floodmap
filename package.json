@@ -10,9 +10,14 @@
     "format": "biome format --write .",
     "lint:biome": "biome lint .",
     "check": "biome check --write .",
-    "check:ci": "biome check ."
+    "check:ci": "biome check .",
+    "test:supabase": "node scripts/test-supabase.js",
+    "test:api": "node scripts/test-api.js",
+    "test:sos": "node scripts/test-sos-db.js",
+    "check:setup": "node scripts/check-setup.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.84.0",
     "@turf/turf": "^7.3.0",
     "lru-cache": "^11.2.2",
     "lucide-react": "^0.554.0",
@@ -31,6 +36,7 @@
     "@types/react": "^19.2.6",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.22",
+    "dotenv": "^17.2.3",
     "eslint": "^9.39.1",
     "eslint-config-next": "^16.0.3",
     "postcss": "^8.5.6",

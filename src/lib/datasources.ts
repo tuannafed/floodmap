@@ -5,6 +5,7 @@ export interface GeocodeResult {
 
 export interface NowcastData {
   minutely_15?: {
+    time?: string[]
     precipitation?: number[]
     precipitation_probability?: number[]
   }
@@ -21,6 +22,7 @@ export interface RainViewerTimeline {
 
 export interface TideData {
   extremes?: Array<{ height: number }>
+  heights?: Array<{ height: number; dt: number }>
 }
 
 export async function geocodeProvince(
@@ -36,17 +38,14 @@ export async function fetchNowcast(
   lon: number
 ): Promise<NowcastData> {
   try {
-    const response = await fetch(
-      `/api/nowcast?lat=${lat}&lon=${lon}`,
-      {
-        signal: AbortSignal.timeout(15000), // 15 second timeout
-      }
-    )
-    
+    const response = await fetch(`/api/nowcast?lat=${lat}&lon=${lon}`, {
+      signal: AbortSignal.timeout(15000), // 15 second timeout
+    })
+
     if (!response.ok) {
       throw new Error(`Failed to fetch nowcast: ${response.status}`)
     }
-    
+
     return await response.json()
   } catch (error) {
     console.error('Error fetching nowcast:', error)
@@ -70,11 +69,11 @@ export async function fetchTide(lat: number, lon: number): Promise<TideData> {
     const res = await fetch(`/api/tides?lat=${lat}&lon=${lon}`, {
       signal: AbortSignal.timeout(15000), // 15 second timeout
     })
-    
+
     if (!res.ok) {
       throw new Error(`Failed to fetch tide: ${res.status}`)
     }
-    
+
     return await res.json()
   } catch (error) {
     console.error('Error fetching tide:', error)

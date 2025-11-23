@@ -187,120 +187,142 @@ export function SosListPanel({ sosReports, onSelectSos }: SosListPanelProps) {
             </div>
 
             {/* List */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            <div className="flex-1 overflow-y-auto p-4 space-y-6">
               {sortedReports.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <AlertCircle className="size-12 mx-auto mb-2 opacity-50" />
                   <p>Không có SOS nào</p>
                 </div>
               ) : (
-                sortedReports.map((report) => (
-                  <div
-                    key={report.id}
-                    onClick={() => {
-                      onSelectSos?.(report)
-                      setIsOpen(false)
-                    }}
-                    className="bg-background hover:bg-muted/50 border border-border rounded-lg p-3 cursor-pointer transition-colors"
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-2xl">🆘</span>
-                        <span
-                          className={`text-xs font-bold px-2 py-0.5 rounded ${
-                            statusColors[
-                              report.status as keyof typeof statusColors
-                            ]
-                          } text-white`}
-                        >
-                          {
-                            statusLabels[
-                              report.status as keyof typeof statusLabels
-                            ]
-                          }
-                        </span>
-                      </div>
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Clock className="size-3" />
-                        {formatTime(report.createdAt)}
-                      </span>
-                    </div>
+                sortedReports.map((report) => {
+                  // Urgency colors: High (red), Medium (orange), Low (green)
+                  const urgencyBorderColor =
+                    report.urgency === 'high'
+                      ? 'border-l-error-600'
+                      : report.urgency === 'medium'
+                      ? 'border-l-warning-600'
+                      : 'border-l-success-600'
 
-                    <div className="space-y-1 text-sm">
-                      <div className="flex items-center gap-2">
-                        <Users className="size-4 text-muted-foreground" />
-                        <span className="text-card-foreground">
-                          <strong>{report.peopleCount}</strong> người
-                        </span>
-                        <span
-                          className={`text-xs px-2 py-0.5 rounded ${
-                            report.urgency === 'high'
-                              ? 'bg-error-600 text-white'
-                              : report.urgency === 'medium'
-                              ? 'bg-warning-600 text-white'
-                              : 'bg-info-600 text-white'
-                          }`}
-                        >
-                          {
-                            urgencyLabels[
-                              report.urgency as keyof typeof urgencyLabels
-                            ]
-                          }
-                        </span>
-                      </div>
+                  const urgencyBgColor =
+                    report.urgency === 'high'
+                      ? 'bg-error-50 dark:bg-error-950/20'
+                      : report.urgency === 'medium'
+                      ? 'bg-warning-50 dark:bg-warning-950/20'
+                      : 'bg-success-50 dark:bg-success-950/20'
 
-                      {report.hasVulnerable && (
-                        <div className="text-xs text-warning-700 dark:text-warning-300">
-                          ⚠️ Có người già/trẻ em/khuyết tật
+                  return (
+                    <div
+                      key={report.id}
+                      onClick={() => {
+                        onSelectSos?.(report)
+                        setIsOpen(false)
+                      }}
+                      className={`bg-background hover:bg-muted/50 border-l-4 ${urgencyBorderColor} border-r border-t border-b border-border rounded-lg p-4 cursor-pointer transition-all hover:shadow-md ${urgencyBgColor}`}
+                    >
+                      {/* Header */}
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">🆘</span>
+                          <span
+                            className={`text-xs font-bold px-2 py-1 rounded ${
+                              statusColors[
+                                report.status as keyof typeof statusColors
+                              ]
+                            } text-white`}
+                          >
+                            {
+                              statusLabels[
+                                report.status as keyof typeof statusLabels
+                              ]
+                            }
+                          </span>
+                          <span
+                            className={`text-xs font-semibold px-2 py-1 rounded ${
+                              report.urgency === 'high'
+                                ? 'bg-error-600 text-white'
+                                : report.urgency === 'medium'
+                                ? 'bg-warning-600 text-white'
+                                : 'bg-success-600 text-white'
+                            }`}
+                          >
+                            {
+                              urgencyLabels[
+                                report.urgency as keyof typeof urgencyLabels
+                              ]
+                            }
+                          </span>
                         </div>
-                      )}
+                        <span className="text-xs text-muted-foreground flex items-center gap-1 whitespace-nowrap">
+                          <Clock className="size-3" />
+                          {formatTime(report.createdAt)}
+                        </span>
+                      </div>
 
-                      {report.description && (
-                        <div className="text-xs text-muted-foreground line-clamp-2">
-                          {report.description}
+                      {/* Content */}
+                      <div className="space-y-2 mb-3">
+                        <div className="flex items-center gap-2">
+                          <Users className="size-4 text-muted-foreground shrink-0" />
+                          <span className="text-sm text-card-foreground font-medium">
+                            <strong>{report.peopleCount}</strong> người cần cứu
+                          </span>
                         </div>
-                      )}
 
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <MapPin className="size-3" />
-                        {report.lat.toFixed(4)}, {report.lon.toFixed(4)}
+                        {report.hasVulnerable && (
+                          <div className="bg-warning-100 dark:bg-warning-900/30 text-warning-800 dark:text-warning-200 rounded-md px-2 py-1 text-xs font-medium">
+                            ⚠️ Có người già/trẻ em/khuyết tật
+                          </div>
+                        )}
+
+                        {report.description && (
+                          <div className="text-sm text-card-foreground line-clamp-2">
+                            {report.description}
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <MapPin className="size-3 shrink-0" />
+                          <span className="font-mono">
+                            {report.lat.toFixed(4)}, {report.lon.toFixed(4)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="pt-3 border-t border-border flex gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            window.location.href = 'tel:113'
+                          }}
+                          className="flex-1 bg-gray-500 hover:bg-gray-600 text-white rounded-md px-3 py-2 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                        >
+                          <Phone className="size-3.5" />
+                          113
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            window.location.href = 'tel:114'
+                          }}
+                          className="flex-1 bg-gray-500 hover:bg-gray-600 text-white rounded-md px-3 py-2 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                        >
+                          <Phone className="size-3.5" />
+                          114
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            window.location.href = 'tel:115'
+                          }}
+                          className="flex-1 bg-gray-500 hover:bg-gray-600 text-white rounded-md px-3 py-2 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                        >
+                          <Phone className="size-3.5" />
+                          115
+                        </button>
                       </div>
                     </div>
-
-                    <div className="mt-2 pt-2 border-t border-border flex gap-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          window.location.href = 'tel:113'
-                        }}
-                        className="flex-1 bg-error-600 hover:bg-error-700 text-white rounded-md px-2 py-1 text-xs font-medium flex items-center justify-center gap-1 transition-colors"
-                      >
-                        <Phone className="size-3" />
-                        113
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          window.location.href = 'tel:114'
-                        }}
-                        className="flex-1 bg-error-600 hover:bg-error-700 text-white rounded-md px-2 py-1 text-xs font-medium flex items-center justify-center gap-1 transition-colors"
-                      >
-                        <Phone className="size-3" />
-                        114
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          window.location.href = 'tel:115'
-                        }}
-                        className="flex-1 bg-error-600 hover:bg-error-700 text-white rounded-md px-2 py-1 text-xs font-medium flex items-center justify-center gap-1 transition-colors"
-                      >
-                        <Phone className="size-3" />
-                        115
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
           </div>

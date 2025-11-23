@@ -1,5 +1,4 @@
 const KEY = process.env.WORLDTIDES_KEY
-console.log('🚀 ~ KEY:', KEY)
 
 export async function GET(req: Request) {
   if (!KEY) {
