@@ -8,6 +8,9 @@ import {
   NavigationControl,
   Popup,
   useMap,
+  ScaleControl,
+  GeolocateControl,
+  FullscreenControl,
 } from 'react-map-gl/maplibre'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -39,7 +42,6 @@ interface MapViewProps {
   sosReports?: SosReport[]
   selectedSos?: SosReport | null
   showRisk?: boolean
-  userLocation?: { lat: number; lon: number } | null
   onMove?: (viewState: {
     latitude: number
     longitude: number
@@ -207,6 +209,7 @@ function SosMarkersLayerInner({
     if (!map || !sosReports || sosReports.length === 0) return
 
     const mapInstance = map.getMap()
+    const isAttachedRef = { current: false }
 
     // Handle cluster click - zoom in
     const handleClusterClick = (e: maplibregl.MapLayerMouseEvent) => {
@@ -278,20 +281,37 @@ function SosMarkersLayerInner({
 
     // Wait for layers to be loaded before attaching event handlers
     const attachHandlers = () => {
+      // Prevent duplicate attachment
+      if (isAttachedRef.current) {
+        console.log('🔵 Handlers already attached, skipping')
+        return
+      }
+
       const clusterLayer = mapInstance.getLayer(layers.sosClusters.layerId)
       const unclusteredLayer = mapInstance.getLayer(
         layers.sosUnclustered.layerId
       )
 
+      console.log('🔵 Checking layers:', {
+        clusterLayer: !!clusterLayer,
+        unclusteredLayer: !!unclusteredLayer,
+        isAttached: isAttachedRef.current,
+      })
+
       if (!clusterLayer || !unclusteredLayer) {
         // Layers not ready yet, wait a bit
+        console.log('🔵 Layers not ready, retrying in 100ms')
         setTimeout(attachHandlers, 100)
         return
       }
 
+      console.log('🔵 Attaching click handlers to layers')
+
       // Attach click handlers - ensure layers are ready
       mapInstance.on('click', layers.sosClusters.layerId, handleClusterClick)
       mapInstance.on('click', layers.sosUnclustered.layerId, handlePointClick)
+
+      isAttachedRef.current = true
 
       // Optimize: Throttle mouse move events to reduce overhead
       let mouseMoveTimeout: NodeJS.Timeout | null = null
@@ -322,23 +342,29 @@ function SosMarkersLayerInner({
       mapInstance.on('mouseout', handleMouseLeave)
     }
 
-    // Wait for map to be ready
-    if (mapInstance.loaded()) {
-      attachHandlers()
-    } else {
-      mapInstance.once('load', attachHandlers)
+    // Wait for map to be ready and layers to be loaded
+    const setupHandlers = () => {
+      if (mapInstance.loaded()) {
+        // Map is loaded, wait for layers to be ready
+        mapInstance.once('idle', () => {
+          attachHandlers()
+        })
+        // Also try immediately in case layers are already ready
+        attachHandlers()
+      } else {
+        mapInstance.once('load', () => {
+          mapInstance.once('idle', () => {
+            attachHandlers()
+          })
+        })
+      }
     }
 
-    // Also listen for data events to re-attach handlers when source data changes
-    const handleData = () => {
-      setTimeout(attachHandlers, 100)
-    }
-    mapInstance.on('data', handleData)
+    setupHandlers()
 
     // Update handlers ref when they change
     handlersRef.current.handleClusterClick = handleClusterClick
     handlersRef.current.handlePointClick = handlePointClick
-    handlersRef.current.handleData = handleData
 
     // Cleanup function
     return () => {
@@ -467,7 +493,6 @@ export default function MapView({
   sosReports,
   selectedSos,
   showRisk = true,
-  userLocation,
   onMove,
   onSosSelect,
 }: MapViewProps) {
@@ -483,33 +508,11 @@ export default function MapView({
   const prevCenterRef = useRef<{ lat: number; lon: number }>(center)
   const isFlyingRef = useRef(false)
 
-  // Fly to user location when locate button is clicked (higher zoom)
-  useEffect(() => {
-    if (userLocation && mapRef.current && !isFlyingRef.current) {
-      const map = mapRef.current.getMap()
-      if (map) {
-        isFlyingRef.current = true
-        // Fly to user location with higher zoom for precise location
-        map.flyTo({
-          center: [userLocation.lon, userLocation.lat],
-          zoom: 16, // Higher zoom for user's current location
-          duration: 1500,
-          essential: true,
-        })
-
-        // Reset flying flag after animation
-        setTimeout(() => {
-          isFlyingRef.current = false
-        }, 1600)
-      }
-    }
-  }, [userLocation])
-
   // Fly to center when it changes (e.g., from search)
-  // Skip if we're already flying to a selected SOS or user location
+  // Skip if we're already flying to a selected SOS
   useEffect(() => {
-    // Don't fly if there's a selected SOS or user location (let those effects handle it)
-    if (selectedSos || userLocation) return
+    // Don't fly if there's a selected SOS (let that effect handle it)
+    if (selectedSos) return
 
     const prevCenter = prevCenterRef.current
     const hasCenterChanged =
@@ -535,7 +538,7 @@ export default function MapView({
       }
       prevCenterRef.current = center
     }
-  }, [center.lat, center.lon, selectedSos, userLocation])
+  }, [center.lat, center.lon, selectedSos])
 
   const handleMove = (evt: any) => {
     if (evt.viewState) {
@@ -611,10 +614,6 @@ export default function MapView({
       onMove={handleMove}
       style={{ width: '100%', height: '100%' }}
       mapStyle={MAP_STYLE_URL}
-      // mapboxAccessToken={
-      //   mapboxToken ||
-      //   'pk.eyJ1IjoibHVjaWFuY29kZSIsImEiOiJjbWl6c2ZncjIwMG9yMnBzYWZ1bWZkYnVzIn0.B49zE90tYCj92KmYB5g8gQ'
-      // }
       maxBounds={[
         [100, 6.0], // Southwest (mở rộng về phía Tây và Nam)
         [112, 25.0], // Northeast (mở rộng về phía Đông và Bắc)
@@ -625,6 +624,8 @@ export default function MapView({
       ]}
     >
       {/* NavigationControl removed - zoom toolbar hidden */}
+      <GeolocateControl position="top-left" />
+      <FullscreenControl position="top-left" />
       <NavigationControl position="top-left" />
 
       <RiskLayer

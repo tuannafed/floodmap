@@ -16,7 +16,6 @@ import {
 import { LoaderCircleIcon, SearchIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { BottomNavigator, type TabType } from '@/components/BottomNavigator'
-import { LocateButton } from '@/components/LocateButton'
 import { useRealtimeSOS } from '@/hooks/useRealtimeSOS'
 import type { SosReport } from '@/components/MapView'
 
@@ -36,10 +35,6 @@ export default function Page() {
   const [sosReports, setSosReports] = useState<any[]>([])
   const [selectedSos, setSelectedSos] = useState<any | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [userLocation, setUserLocation] = useState<{
-    lat: number
-    lon: number
-  } | null>(null)
 
   // Layer visibility states
   const [showRisk, setShowRisk] = useState(true)
@@ -338,16 +333,6 @@ export default function Page() {
         </button>
       </form>
 
-      {/* Locate User Button */}
-      <LocateButton
-        onLocationChange={(location) => {
-          centerRef.current = location
-          setCenter(location)
-        }}
-        onUserLocationChange={setUserLocation}
-        onClearSelectedSos={() => setSelectedSos(null)}
-      />
-
       {/* Map View */}
       {center ? (
         <>
@@ -357,7 +342,6 @@ export default function Page() {
             sosReports={sosReports}
             selectedSos={selectedSos}
             showRisk={showRisk}
-            userLocation={userLocation}
             onMove={(viewState) => {
               // Optional: handle map movement
             }}
