@@ -241,7 +241,7 @@ export default function Page() {
       {/* Search Bar - Always visible on desktop, only on search tab on mobile */}
       <form
         onSubmit={handleSubmit}
-        className={`absolute top-3 left-1/2 -translate-x-1/2 z-2000 bg-card shadow-xl rounded-md px-4 py-3 flex gap-2 border border-border backdrop-blur-sm ${
+        className={`absolute top-3 left-1/2 -translate-x-1/2 z-50 bg-card shadow-xl rounded-md px-4 py-3 flex gap-2 border border-border backdrop-blur-sm ${
           activeTab === 'search' ? 'block' : 'hidden md:flex'
         }`}
       >
