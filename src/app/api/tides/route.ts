@@ -66,6 +66,15 @@ export async function GET(req: Request) {
       )
     }
     
+    // Debug: Log API response
+    console.log('🌊 WorldTides API Response:', {
+      hasExtremes: !!json.extremes,
+      extremesCount: json.extremes?.length || 0,
+      hasHeights: !!json.heights,
+      heightsCount: json.heights?.length || 0,
+      firstExtreme: json.extremes?.[0],
+    })
+    
     return new Response(JSON.stringify(json), {
       headers: { 'Content-Type': 'application/json' },
     })

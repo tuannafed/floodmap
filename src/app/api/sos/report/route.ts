@@ -111,9 +111,14 @@ export async function GET(req: NextRequest) {
       ? parseFloat(searchParams.get('radius')!)
       : null
 
-    // Fetch all reports (filtering will be done client-side for now)
-    // In production, enable PostGIS extension for efficient spatial queries
-    let query = supabase.from('sos_reports').select('*')
+    // Optimize: Add limit and order by urgency/created_at at database level
+    // Limit to 1000 reports max to prevent performance issues
+    let query = supabase
+      .from('sos_reports')
+      .select('*')
+      .order('urgency', { ascending: false }) // high first
+      .order('created_at', { ascending: false }) // newest first
+      .limit(1000) // Max 1000 reports
 
     const { data: reports, error } = await query
 
@@ -126,37 +131,47 @@ export async function GET(req: NextRequest) {
     }
 
     // Filter by location if needed (client-side fallback)
+    // Only filter if radius is provided and reasonable (< 500km)
     let filteredReports = reports || []
-    if (lat && lon && radius !== null && radius > 0) {
+    if (lat && lon && radius !== null && radius > 0 && radius < 500) {
       const centerLat = parseFloat(lat)
       const centerLon = parseFloat(lon)
+
+      // Optimize: Pre-calculate constants outside loop
+      const R = 6371 // Earth radius in km
+      const centerLatRad = (centerLat * Math.PI) / 180
+      const cosCenterLat = Math.cos(centerLatRad)
+
       filteredReports = filteredReports.filter((r) => {
-        // Haversine distance calculation
-        const R = 6371 // Earth radius in km
+        // Optimized Haversine distance calculation
         const dLat = ((r.lat - centerLat) * Math.PI) / 180
         const dLon = ((r.lon - centerLon) * Math.PI) / 180
+        const sinDLat = Math.sin(dLat / 2)
+        const sinDLon = Math.sin(dLon / 2)
         const a =
-          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos((centerLat * Math.PI) / 180) *
-            Math.cos((r.lat * Math.PI) / 180) *
-            Math.sin(dLon / 2) *
-            Math.sin(dLon / 2)
+          sinDLat * sinDLat +
+          cosCenterLat * Math.cos((r.lat * Math.PI) / 180) * sinDLon * sinDLon
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
         const distance = R * c
         return distance <= radius
       })
     }
 
-    // Sort by urgency and time (newest first) - BEFORE transform
-    filteredReports.sort((a, b) => {
-      const urgencyOrder = { high: 3, medium: 2, low: 1 }
-      const aUrgency = urgencyOrder[a.urgency as keyof typeof urgencyOrder] || 0
-      const bUrgency = urgencyOrder[b.urgency as keyof typeof urgencyOrder] || 0
-      if (aUrgency !== bUrgency) {
-        return bUrgency - aUrgency
-      }
-      return (b.created_at || 0) - (a.created_at || 0)
-    })
+    // Sort is already done at database level, but ensure consistency
+    // Only re-sort if we filtered (which might change order)
+    if (lat && lon && radius !== null && radius > 0) {
+      filteredReports.sort((a, b) => {
+        const urgencyOrder = { high: 3, medium: 2, low: 1 }
+        const aUrgency =
+          urgencyOrder[a.urgency as keyof typeof urgencyOrder] || 0
+        const bUrgency =
+          urgencyOrder[b.urgency as keyof typeof urgencyOrder] || 0
+        if (aUrgency !== bUrgency) {
+          return bUrgency - aUrgency
+        }
+        return (b.created_at || 0) - (a.created_at || 0)
+      })
+    }
 
     // Transform database fields to match frontend interface
     const transformedReports = filteredReports.map((r) => ({
@@ -173,7 +188,15 @@ export async function GET(req: NextRequest) {
       updatedAt: r.updated_at,
     }))
 
-    return NextResponse.json({ reports: transformedReports }, { status: 200 })
+    return NextResponse.json(
+      { reports: transformedReports },
+      {
+        status: 200,
+        headers: {
+          'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60', // Cache for 30 seconds
+        },
+      }
+    )
   } catch (error) {
     console.error('Error fetching SOS reports:', error)
     return NextResponse.json(

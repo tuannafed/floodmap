@@ -74,6 +74,19 @@ export async function GET(req: Request) {
     })
 
     const result = turf.featureCollection(bands.flatMap((b) => b.features))
+    
+    // Debug: Log isobands result
+    console.log('⛰️ Isobands API Response:', {
+      featuresCount: result.features.length,
+      bands: ELEV_BANDS.map((up, i) => {
+        const low = i ? ELEV_BANDS[i - 1] : 0
+        const count = result.features.filter(
+          (f: any) => f.properties?.low === low && f.properties?.up === up
+        ).length
+        return { band: `${low}-${up}`, count }
+      }),
+    })
+    
     cache.set(key, result)
     return Response.json(result, {
       headers: { 'Cache-Control': 'max-age=300' },

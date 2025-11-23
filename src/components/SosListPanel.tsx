@@ -39,13 +39,6 @@ export function SosListPanel({
 }: SosListPanelProps) {
   const [isOpen, setIsOpen] = useState(false)
 
-  // Debug: Log SOS reports
-  console.log(
-    '📋 SosListPanel: Received',
-    sosReports?.length || 0,
-    'reports',
-    sosReports
-  )
   const [filterUrgency, setFilterUrgency] = useState<
     'all' | 'high' | 'medium' | 'low'
   >('all')
@@ -283,7 +276,7 @@ export function SosListPanel({
         side="left"
         className="w-full max-w-md sm:max-w-md flex flex-col p-0"
       >
-        <SheetHeader className="sticky top-0 bg-card z-50 border-b border-border p-4 z-10 shrink-0">
+        <SheetHeader className="sticky top-0 bg-card z-50 border-b border-border p-4 shrink-0">
           <SheetTitle className="text-xl font-bold text-card-foreground flex items-center gap-2">
             <List className="size-5" />
             Danh sách SOS ({sortedReports.length})

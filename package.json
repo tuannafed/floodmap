@@ -14,6 +14,7 @@
     "test:supabase": "node scripts/test-supabase.js",
     "test:api": "node scripts/test-api.js",
     "test:sos": "node scripts/test-sos-db.js",
+    "test:realtime": "node scripts/test-realtime-sos.mjs",
     "check:setup": "node scripts/check-setup.js"
   },
   "dependencies": {

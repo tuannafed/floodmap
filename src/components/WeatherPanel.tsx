@@ -12,8 +12,37 @@ interface WeatherPanelProps {
 export function WeatherPanel({ nowcast, tide, isLoading }: WeatherPanelProps) {
   if (isLoading || !nowcast) return null
 
-  const rain = nowcast?.minutely_15?.precipitation?.[0] ?? 0
-  const prob = nowcast?.minutely_15?.precipitation_probability?.[0] ?? 0
+  // Get current precipitation and probability
+  // Open-Meteo returns arrays where index 0 is the current/next 15-minute interval
+  const precipitation = nowcast?.minutely_15?.precipitation
+  const probability = nowcast?.minutely_15?.precipitation_probability
+  const times = nowcast?.minutely_15?.time
+
+  // Find the current time slot or use the first one
+  let rain = 0
+  let prob = 0
+
+  if (precipitation && probability && times) {
+    // Get current time in ISO format (without seconds/milliseconds)
+    const now = new Date()
+    const currentTimeStr = now.toISOString().slice(0, 16) // YYYY-MM-DDTHH:MM
+
+    // Try to find matching time slot
+    const currentIndex = times.findIndex((t: string) => {
+      const timeStr = t.slice(0, 16)
+      return timeStr >= currentTimeStr
+    })
+
+    if (currentIndex >= 0) {
+      rain = precipitation[currentIndex] ?? 0
+      prob = probability[currentIndex] ?? 0
+    } else {
+      // Fallback to first value if no match found
+      rain = precipitation[0] ?? 0
+      prob = probability[0] ?? 0
+    }
+  }
+
   const hasRisk = rain >= 2 && prob >= 70
 
   return (

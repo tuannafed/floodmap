@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect } from 'react'
+import type { Map as MapLibreMap } from 'maplibre-gl'
 import {
   Map,
   Source,
@@ -11,10 +12,6 @@ import {
 } from 'react-map-gl/maplibre'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import {
-  fetchRainviewerTimeline,
-  type RainViewerTimeline,
-} from '@/lib/datasources'
 import {
   layers,
   riskColorExpression,
@@ -53,12 +50,9 @@ export interface SosReport {
 
 interface MapViewProps {
   center: { lat: number; lon: number }
-  iso?: any | null
   riskZones?: any | null
   sosReports?: SosReport[]
   selectedSos?: SosReport | null
-  showRadar?: boolean
-  showDEM?: boolean
   showRisk?: boolean
   userLocation?: { lat: number; lon: number } | null
   onMove?: (viewState: {
@@ -69,91 +63,6 @@ interface MapViewProps {
   onSosSelect?: (report: SosReport | null) => void
 }
 
-function RadarLayer({ show }: { show: boolean }) {
-  const [radarTime, setRadarTime] = useState<number | null>(null)
-  const [radarVersion, setRadarVersion] = useState<string>('2')
-  const [radarError, setRadarError] = useState(false)
-
-  useEffect(() => {
-    let active = true
-    async function fetchRadar() {
-      try {
-        const timeline = await fetchRainviewerTimeline()
-        if (!active) return
-        const frameTime =
-          timeline?.radar?.nowcast?.[0]?.time ??
-          timeline?.radar?.past?.[timeline?.radar?.past?.length - 1]?.time ??
-          null
-        if (frameTime && timeline?.version) {
-          const version = String(timeline.version)
-            .replace('.0', '')
-            .replace('.', '')
-          setRadarVersion(version)
-          setRadarTime(frameTime)
-          setRadarError(false)
-        }
-      } catch (err) {
-        console.error('Error fetching radar timeline:', err)
-        setRadarError(true)
-      }
-    }
-    fetchRadar()
-    const id = setInterval(fetchRadar, 5 * 60 * 1000) // Refresh every 5 minutes
-    return () => {
-      active = false
-      clearInterval(id)
-    }
-  }, [])
-
-  if (!show || !radarTime || radarError) return null
-
-  // Use API proxy - MapLibre will replace {z}, {x}, {y} with actual tile coordinates
-  // We need to use absolute URL for the proxy to work correctly
-  const baseUrl =
-    typeof window !== 'undefined'
-      ? window.location.origin
-      : 'http://localhost:3000'
-  const radarUrl = `${baseUrl}/api/radar-tiles?time=${radarTime}&version=${radarVersion}&z={z}&x={x}&y={y}`
-
-  return (
-    <Source
-      id={layers.radar.sourceId}
-      type="raster"
-      tiles={[radarUrl]}
-      tileSize={256}
-      minzoom={0}
-      maxzoom={18}
-    >
-      <Layer
-        id={layers.radar.layerId}
-        type="raster"
-        paint={{ 'raster-opacity': 0.65 }}
-      />
-    </Source>
-  )
-}
-
-function DEMLayer({ iso, show }: { iso: any | null; show: boolean }) {
-  if (!show || !iso) return null
-
-  return (
-    <Source
-      id={layers.dem.sourceId}
-      type="geojson"
-      data={iso}
-    >
-      <Layer
-        id={layers.dem.layerId}
-        type="fill"
-        paint={{
-          'fill-color': demColorExpression as any,
-          'fill-opacity': 0.15,
-        }}
-      />
-    </Source>
-  )
-}
-
 function RiskLayer({
   riskZones,
   show,
@@ -161,7 +70,17 @@ function RiskLayer({
   riskZones: any | null
   show: boolean
 }) {
-  if (!show || !riskZones || !riskZones.features?.length) return null
+  if (!show) {
+    return null
+  }
+
+  if (!riskZones) {
+    return null
+  }
+
+  if (!riskZones.features || riskZones.features.length === 0) {
+    return null
+  }
 
   return (
     <Source
@@ -238,16 +157,32 @@ function SosMarkersLayerInner({
 }) {
   const { current: map } = useMap()
 
+  // Optimize: Use useRef to store sosReports lookup map for O(1) access
+  const sosReportsMapRef = useRef<globalThis.Map<string, SosReport>>(
+    new globalThis.Map<string, SosReport>()
+  )
+
+  useEffect(() => {
+    // Update lookup map when sosReports change
+    if (sosReports && sosReports.length > 0) {
+      sosReportsMapRef.current = new globalThis.Map<string, SosReport>(
+        sosReports.map((r) => [r.id, r])
+      )
+    } else {
+      sosReportsMapRef.current.clear()
+    }
+  }, [sosReports])
+
+  // Optimize: Memoize GeoJSON conversion and only include essential properties
   const sosGeoJSON = useMemo(() => {
     if (!sosReports || sosReports.length === 0) {
-      console.log('🗺️ No SOS reports to display')
       return {
         type: 'FeatureCollection' as const,
         features: [],
       }
     }
 
-    console.log('🗺️ Creating GeoJSON for', sosReports.length, 'SOS reports')
+    // Only create GeoJSON if reports actually changed
     const geoJSON = {
       type: 'FeatureCollection' as const,
       features: sosReports.map((report) => ({
@@ -257,17 +192,14 @@ function SosMarkersLayerInner({
           coordinates: [report.lon, report.lat],
         },
         properties: {
+          // Only include properties needed for rendering/clustering
           id: report.id,
-          peopleCount: report.peopleCount,
           urgency: report.urgency,
-          description: report.description,
-          hasVulnerable: report.hasVulnerable,
           status: report.status,
-          createdAt: report.createdAt,
+          // Exclude large fields like description to reduce payload size
         },
       })),
     }
-    console.log('🗺️ GeoJSON created:', geoJSON)
     return geoJSON
   }, [sosReports])
 
@@ -305,12 +237,13 @@ function SosMarkersLayerInner({
     }
 
     // Handle unclustered point click - show popup
+    // Optimize: Use Map lookup instead of Array.find for O(1) access
     const handlePointClick = (e: maplibregl.MapLayerMouseEvent) => {
       if (e.features && e.features.length > 0) {
         const feature = e.features[0]
         if (feature.layer?.id === layers.sosUnclustered.layerId) {
           const props = feature.properties
-          const report = sosReports.find((r) => r.id === props.id)
+          const report = sosReportsMapRef.current.get(props.id)
           if (report) {
             onSelectSos?.(report)
           }
@@ -322,14 +255,23 @@ function SosMarkersLayerInner({
     mapInstance.on('click', layers.sosClusters.layerId, handleClusterClick)
     mapInstance.on('click', layers.sosUnclustered.layerId, handlePointClick)
 
-    // Change cursor on hover using mousemove
+    // Optimize: Throttle mouse move events to reduce overhead
+    let mouseMoveTimeout: NodeJS.Timeout | null = null
     const handleMouseMove = (e: maplibregl.MapLayerMouseEvent) => {
-      if (e.features && e.features.length > 0) {
-        mapInstance.getCanvas().style.cursor = 'pointer'
-      }
+      if (mouseMoveTimeout) return
+      mouseMoveTimeout = setTimeout(() => {
+        if (e.features && e.features.length > 0) {
+          mapInstance.getCanvas().style.cursor = 'pointer'
+        }
+        mouseMoveTimeout = null
+      }, 16) // ~60fps throttle
     }
 
     const handleMouseLeave = () => {
+      if (mouseMoveTimeout) {
+        clearTimeout(mouseMoveTimeout)
+        mouseMoveTimeout = null
+      }
       mapInstance.getCanvas().style.cursor = ''
     }
 
@@ -338,6 +280,9 @@ function SosMarkersLayerInner({
     mapInstance.on('mouseout', handleMouseLeave)
 
     return () => {
+      if (mouseMoveTimeout) {
+        clearTimeout(mouseMoveTimeout)
+      }
       mapInstance.off('click', layers.sosClusters.layerId, handleClusterClick)
       mapInstance.off('click', layers.sosUnclustered.layerId, handlePointClick)
       mapInstance.off('mousemove', layers.sosClusters.layerId, handleMouseMove)
@@ -348,18 +293,11 @@ function SosMarkersLayerInner({
       )
       mapInstance.off('mouseout', handleMouseLeave)
     }
-  }, [map, sosReports])
+  }, [map, onSelectSos]) // Removed sosReports from dependencies
 
   if (!sosReports || sosReports.length === 0) {
-    console.log('🗺️ SosMarkersLayerInner: No reports, returning null')
     return null
   }
-
-  console.log(
-    '🗺️ SosMarkersLayerInner: Rendering',
-    sosReports.length,
-    'reports'
-  )
 
   return (
     <>
@@ -438,12 +376,9 @@ function SosMarkersLayerInner({
 
 export default function MapView({
   center,
-  iso,
   riskZones,
   sosReports,
   selectedSos,
-  showRadar = true,
-  showDEM = false,
   showRisk = true,
   userLocation,
   onMove,
@@ -573,11 +508,6 @@ export default function MapView({
       {/* NavigationControl removed - zoom toolbar hidden */}
       {/* <NavigationControl position="top-left" /> */}
 
-      <RadarLayer show={showRadar} />
-      <DEMLayer
-        iso={iso}
-        show={showDEM}
-      />
       <RiskLayer
         riskZones={riskZones}
         show={showRisk}

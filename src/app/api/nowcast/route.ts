@@ -32,6 +32,19 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await response.json()
+    
+    // Debug: Log API response structure
+    console.log('🌤️ Open-Meteo API Response:', {
+      hasData: !!data,
+      hasMinutely15: !!data.minutely_15,
+      timeCount: data.minutely_15?.time?.length || 0,
+      precipitationCount: data.minutely_15?.precipitation?.length || 0,
+      probabilityCount: data.minutely_15?.precipitation_probability?.length || 0,
+      firstTime: data.minutely_15?.time?.[0],
+      firstPrecipitation: data.minutely_15?.precipitation?.[0],
+      firstProbability: data.minutely_15?.precipitation_probability?.[0],
+    })
+    
     return NextResponse.json(data, {
       headers: {
         'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',

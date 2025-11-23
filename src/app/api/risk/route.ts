@@ -114,8 +114,36 @@ export async function GET(req: Request) {
       })
     }
 
-    const rate = nc?.minutely_15?.precipitation?.[0] ?? 0
-    const prob = nc?.minutely_15?.precipitation_probability?.[0] ?? 0
+    // Get current precipitation and probability from Open-Meteo
+    // Find the current time slot or use the first one
+    const precipitation = nc?.minutely_15?.precipitation
+    const probability = nc?.minutely_15?.precipitation_probability
+    const times = nc?.minutely_15?.time
+
+    let rate = 0
+    let prob = 0
+
+    if (precipitation && probability && times) {
+      // Get current time in ISO format
+      const now = new Date()
+      const currentTimeStr = now.toISOString().slice(0, 16) // YYYY-MM-DDTHH:MM
+
+      // Try to find matching time slot
+      const currentIndex = times.findIndex((t: string) => {
+        const timeStr = t.slice(0, 16)
+        return timeStr >= currentTimeStr
+      })
+
+      if (currentIndex >= 0) {
+        rate = precipitation[currentIndex] ?? 0
+        prob = probability[currentIndex] ?? 0
+      } else {
+        // Fallback to first value
+        rate = precipitation[0] ?? 0
+        prob = probability[0] ?? 0
+      }
+    }
+
     const tideLevel = tide?.extremes?.[0]?.height ?? 0
 
     const feats = iso.features.map((f: any) => {

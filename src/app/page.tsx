@@ -17,6 +17,8 @@ import { LoaderCircleIcon, SearchIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { BottomNavigator, type TabType } from '@/components/BottomNavigator'
 import { LocateButton } from '@/components/LocateButton'
+import { useRealtimeSOS } from '@/hooks/useRealtimeSOS'
+import type { SosReport } from '@/components/MapView'
 
 export default function Page() {
   const [activeTab, setActiveTab] = useState<TabType>('home')
@@ -30,7 +32,6 @@ export default function Page() {
   // Map data states
   const [nowcast, setNowcast] = useState<NowcastData | null>(null)
   const [tide, setTide] = useState<TideData | null>(null)
-  const [iso, setIso] = useState<any | null>(null)
   const [riskZones, setRiskZones] = useState<any | null>(null)
   const [sosReports, setSosReports] = useState<any[]>([])
   const [selectedSos, setSelectedSos] = useState<any | null>(null)
@@ -41,9 +42,6 @@ export default function Page() {
   } | null>(null)
 
   // Layer visibility states
-  // Note: Radar temporarily disabled due to CORS restrictions from RainViewer
-  const [showRadar, setShowRadar] = useState(false)
-  const [showDEM, setShowDEM] = useState(false)
   const [showRisk, setShowRisk] = useState(true)
 
   // Refs to prevent loop calls
@@ -151,18 +149,16 @@ export default function Page() {
         const currentCenter = centerRef.current
         if (!currentCenter) return
 
-        const [nc, td, isoRes, riskRes, sosRes] = await Promise.allSettled([
+        const [nc, td, riskRes, sosRes] = await Promise.allSettled([
           fetchNowcast(currentCenter.lat, currentCenter.lon),
           fetchTide(currentCenter.lat, currentCenter.lon),
-          fetch(
-            `/api/isobands?lat=${currentCenter.lat}&lon=${currentCenter.lon}&radiusKm=10&cellKm=1`
-          )
-            .then((r) => r.json())
-            .catch(() => ({ type: 'FeatureCollection', features: [] })),
           fetch(`/api/risk?lat=${currentCenter.lat}&lon=${currentCenter.lon}`)
             .then((r) => r.json())
             .catch(() => ({ type: 'FeatureCollection', features: [] })),
-          fetch(`/api/sos/report`)
+          fetch(`/api/sos/report`, {
+            // Add cache headers for better performance
+            cache: 'default',
+          })
             .then((r) => r.json())
             .catch(() => ({ reports: [] })),
         ])
@@ -172,10 +168,6 @@ export default function Page() {
         // Extract values from Promise.allSettled results
         const nowcastValue = nc.status === 'fulfilled' ? nc.value : null
         const tideValue = td.status === 'fulfilled' ? td.value : null
-        const isoValue =
-          isoRes.status === 'fulfilled'
-            ? isoRes.value
-            : { type: 'FeatureCollection', features: [] }
         const riskZonesValue =
           riskRes.status === 'fulfilled'
             ? riskRes.value
@@ -185,12 +177,10 @@ export default function Page() {
 
         setNowcast(nowcastValue)
         setTide(tideValue)
-        setIso(isoValue)
         setRiskZones(riskZonesValue)
 
-        // Debug: Log SOS reports
         const reports = sosDataValue?.reports || []
-        console.log('📋 SOS Reports fetched:', reports.length, reports)
+
         setSosReports(reports)
         setIsLoading(false)
       } catch (err) {
@@ -208,6 +198,85 @@ export default function Page() {
       clearInterval(id)
     }
   }, [center])
+
+  // Realtime SOS updates via Supabase Realtime
+  useRealtimeSOS({
+    onInsert: (newReport: SosReport) => {
+      setSosReports((prev) => {
+        // Check if report already exists (avoid duplicates)
+        if (prev.some((r) => r.id === newReport.id)) {
+          return prev
+        }
+        // Add new report and sort by urgency + time
+        const updated = [...prev, newReport]
+        updated.sort((a, b) => {
+          const urgencyOrder: Record<'high' | 'medium' | 'low', number> = {
+            high: 3,
+            medium: 2,
+            low: 1,
+          }
+          const aUrgency =
+            urgencyOrder[a.urgency as 'high' | 'medium' | 'low'] || 0
+          const bUrgency =
+            urgencyOrder[b.urgency as 'high' | 'medium' | 'low'] || 0
+          if (aUrgency !== bUrgency) {
+            return bUrgency - aUrgency
+          }
+          return (b.createdAt || 0) - (a.createdAt || 0)
+        })
+        return updated
+      })
+      toast.success(
+        `🆕 SOS mới: ${
+          newReport.urgency === 'high'
+            ? 'Khẩn cấp'
+            : newReport.urgency === 'medium'
+            ? 'Trung bình'
+            : 'Thấp'
+        }`
+      )
+    },
+    onUpdate: (updatedReport: SosReport) => {
+      setSosReports((prev) => {
+        const updated = prev.map((r) =>
+          r.id === updatedReport.id ? updatedReport : r
+        )
+        // Re-sort after update
+        updated.sort((a, b) => {
+          const urgencyOrder: Record<'high' | 'medium' | 'low', number> = {
+            high: 3,
+            medium: 2,
+            low: 1,
+          }
+          const aUrgency =
+            urgencyOrder[a.urgency as 'high' | 'medium' | 'low'] || 0
+          const bUrgency =
+            urgencyOrder[b.urgency as 'high' | 'medium' | 'low'] || 0
+          if (aUrgency !== bUrgency) {
+            return bUrgency - aUrgency
+          }
+          return (b.createdAt || 0) - (a.createdAt || 0)
+        })
+        return updated
+      })
+
+      // Show toast if status changed to rescued
+      if (updatedReport.status === 'rescued') {
+        toast.success('✅ SOS đã được cứu hộ!')
+      } else if (updatedReport.status === 'processing') {
+        toast.info('🔄 SOS đang được xử lý...')
+      }
+    },
+    onDelete: (deletedId: string) => {
+      setSosReports((prev) => prev.filter((r) => r.id !== deletedId))
+      // Clear selected SOS if it was deleted
+      if (selectedSos?.id === deletedId) {
+        setSelectedSos(null)
+      }
+      toast.info('🗑️ SOS đã được xóa')
+    },
+    enabled: true, // Always enabled when component is mounted
+  })
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -284,12 +353,9 @@ export default function Page() {
         <>
           <MapView
             center={center}
-            iso={iso}
             riskZones={riskZones}
             sosReports={sosReports}
             selectedSos={selectedSos}
-            showRadar={showRadar}
-            showDEM={showDEM}
             showRisk={showRisk}
             userLocation={userLocation}
             onMove={(viewState) => {
@@ -306,11 +372,7 @@ export default function Page() {
               isLoading={isLoading}
             />
             <LayerToggles
-              showRadar={showRadar}
-              showDEM={showDEM}
               showRisk={showRisk}
-              onToggleRadar={setShowRadar}
-              onToggleDEM={setShowDEM}
               onToggleRisk={setShowRisk}
             />
           </div>
@@ -326,11 +388,7 @@ export default function Page() {
                   />
                   {/* Lớp bản đồ */}
                   <LayerToggles
-                    showRadar={showRadar}
-                    showDEM={showDEM}
                     showRisk={showRisk}
-                    onToggleRadar={setShowRadar}
-                    onToggleDEM={setShowDEM}
                     onToggleRisk={setShowRisk}
                   />
                 </div>
