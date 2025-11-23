@@ -15,8 +15,10 @@ import {
 } from '@/lib/datasources'
 import { LoaderCircleIcon, SearchIcon } from 'lucide-react'
 import { ToastContainer, type ToastType } from '@/components/Toast'
+import { BottomNavigator, type TabType } from '@/components/BottomNavigator'
 
 export default function Page() {
+  const [activeTab, setActiveTab] = useState<TabType>('home')
   const [q, setQ] = useState('')
   const [center, setCenter] = useState<{ lat: number; lon: number } | null>(
     null
@@ -200,10 +202,12 @@ export default function Page() {
 
   return (
     <div className="relative w-screen h-screen overflow-hidden">
-      {/* Search Bar */}
+      {/* Search Bar - Always visible on desktop, only on search tab on mobile */}
       <form
         onSubmit={handleSubmit}
-        className="absolute top-3 left-1/2 -translate-x-1/2 z-2000 bg-card shadow-xl rounded-md px-4 py-3 flex gap-2 border border-border backdrop-blur-sm"
+        className={`absolute top-3 left-1/2 -translate-x-1/2 z-2000 bg-card shadow-xl rounded-md px-4 py-3 flex gap-2 border border-border backdrop-blur-sm ${
+          activeTab === 'search' ? 'block' : 'hidden md:flex'
+        }`}
       >
         <input
           value={q}
@@ -255,7 +259,7 @@ export default function Page() {
             onSosSelect={setSelectedSos}
           />
 
-          {/* Sidebar Left - Desktop */}
+          {/* Desktop Sidebar - Always visible on desktop */}
           <div className="hidden md:block absolute top-6 right-3 z-1000 space-y-3 max-w-xs">
             <LayerToggles
               showRadar={showRadar}
@@ -272,24 +276,55 @@ export default function Page() {
             />
           </div>
 
-          {/* Mobile Bottom Sheet */}
-          <div className="md:hidden absolute bottom-0 left-0 right-0 z-1000 bg-card border-t border-border rounded-t-lg shadow-lg max-h-[50vh] overflow-y-auto">
-            <div className="p-4 space-y-3">
-              <LayerToggles
-                showRadar={showRadar}
-                showDEM={showDEM}
-                showRisk={showRisk}
-                onToggleRadar={setShowRadar}
-                onToggleDEM={setShowDEM}
-                onToggleRisk={setShowRisk}
-              />
-              <WeatherPanel
-                nowcast={nowcast}
-                tide={tide}
-                isLoading={isLoading}
-              />
+          {/* Mobile Tab Content Panels */}
+          {/* Weather & Layers Panel - Mobile only */}
+          {activeTab === 'weather' && (
+            <div className="md:hidden absolute bottom-16 left-0 right-0 z-1000 bg-card border-t border-border shadow-lg max-h-[60vh] overflow-y-auto pb-safe">
+              <div className="p-4 space-y-3">
+                <LayerToggles
+                  showRadar={showRadar}
+                  showDEM={showDEM}
+                  showRisk={showRisk}
+                  onToggleRadar={setShowRadar}
+                  onToggleDEM={setShowDEM}
+                  onToggleRisk={setShowRisk}
+                />
+                <WeatherPanel
+                  nowcast={nowcast}
+                  tide={tide}
+                  isLoading={isLoading}
+                />
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* SOS List Panel - Mobile only */}
+          {activeTab === 'sos' && (
+            <div className="md:hidden fixed inset-0 top-0 bottom-16 z-1000 bg-card overflow-hidden flex flex-col">
+              <div className="shrink-0 p-4 border-b border-border">
+                <h2 className="text-lg font-bold text-card-foreground">
+                  Danh sách SOS ({sosReports.length})
+                </h2>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                <div className="p-4">
+                  <SosListPanel
+                    inline={true}
+                    sosReports={sosReports}
+                    onSelectSos={(report) => {
+                      setSelectedSos(report)
+                      // Update center to trigger map movement
+                      setCenter({ lat: report.lat, lon: report.lon })
+                      // Update center ref immediately for smooth transition
+                      centerRef.current = { lat: report.lat, lon: report.lon }
+                      // Switch to search tab to see the map
+                      setActiveTab('search')
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Error Message */}
           {error && (
@@ -320,20 +355,33 @@ export default function Page() {
             .then((r) => r.json())
             .then((data) => setSosReports(data?.reports || []))
             .catch(() => {})
+          // Switch to SOS tab to see the new report
+          setActiveTab('sos')
         }}
       />
 
-      {/* SOS List Panel */}
-      <SosListPanel
-        sosReports={sosReports}
-        onSelectSos={(report) => {
-          setSelectedSos(report)
-          // Update center to trigger map movement
-          setCenter({ lat: report.lat, lon: report.lon })
-          // Update center ref immediately for smooth transition
-          centerRef.current = { lat: report.lat, lon: report.lon }
-        }}
-      />
+      {/* Bottom Navigator - Mobile only */}
+      <div className="md:hidden">
+        <BottomNavigator
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          sosCount={sosReports.length}
+        />
+      </div>
+
+      {/* Desktop SOS List Panel */}
+      <div className="hidden md:block">
+        <SosListPanel
+          sosReports={sosReports}
+          onSelectSos={(report) => {
+            setSelectedSos(report)
+            // Update center to trigger map movement
+            setCenter({ lat: report.lat, lon: report.lon })
+            // Update center ref immediately for smooth transition
+            centerRef.current = { lat: report.lat, lon: report.lon }
+          }}
+        />
+      </div>
 
       {/* Toast Container */}
       <ToastContainer

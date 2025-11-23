@@ -54,7 +54,7 @@ export function SosPopup({ report, onClose }: SosPopupProps) {
   }
 
   return (
-    <div className="p-2 max-w-[300px] w-full">
+    <div className="px-2 py-1 max-w-[300px] w-full">
       <div className="mb-3">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-2xl">🆘</span>

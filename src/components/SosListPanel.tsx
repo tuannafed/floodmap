@@ -15,9 +15,14 @@ import {
 interface SosListPanelProps {
   sosReports: any[]
   onSelectSos?: (report: any) => void
+  inline?: boolean // If true, render inline content without sidebar
 }
 
-export function SosListPanel({ sosReports, onSelectSos }: SosListPanelProps) {
+export function SosListPanel({
+  sosReports,
+  onSelectSos,
+  inline = false,
+}: SosListPanelProps) {
   const [isOpen, setIsOpen] = useState(false)
 
   // Debug: Log SOS reports
@@ -88,6 +93,142 @@ export function SosListPanel({ sosReports, onSelectSos }: SosListPanelProps) {
     return b.createdAt - a.createdAt
   })
 
+  // Inline content (for bottom navigator)
+  if (inline) {
+    return (
+      <div className="space-y-3">
+        {/* Filters */}
+        <div className="flex gap-2 flex-wrap">
+          <select
+            value={filterUrgency}
+            onChange={(e) =>
+              setFilterUrgency(
+                e.target.value as 'all' | 'high' | 'medium' | 'low'
+              )
+            }
+            className="flex-1 min-w-[120px] border border-border rounded-md px-3 py-1.5 text-sm bg-background text-foreground"
+          >
+            <option value="all">Tất cả mức độ</option>
+            <option value="high">Cao</option>
+            <option value="medium">Trung bình</option>
+            <option value="low">Thấp</option>
+          </select>
+          <select
+            value={filterStatus}
+            onChange={(e) =>
+              setFilterStatus(
+                e.target.value as 'all' | 'new' | 'processing' | 'rescued'
+              )
+            }
+            className="flex-1 min-w-[120px] border border-border rounded-md px-3 py-1.5 text-sm bg-background text-foreground"
+          >
+            <option value="all">Tất cả trạng thái</option>
+            <option value="new">Mới</option>
+            <option value="processing">Đang xử lý</option>
+            <option value="rescued">Đã cứu</option>
+          </select>
+        </div>
+
+        {/* List */}
+        {sortedReports.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            <p>Không có SOS nào</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {sortedReports.map((report) => (
+              <div
+                key={report.id}
+                onClick={() => onSelectSos?.(report)}
+                className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                  report.urgency === 'high'
+                    ? 'border-error-500 bg-error-50 dark:bg-error-900/20'
+                    : report.urgency === 'medium'
+                      ? 'border-warning-500 bg-warning-50 dark:bg-warning-900/20'
+                      : 'border-success-500 bg-success-50 dark:bg-success-900/20'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-lg">🆘</span>
+                      <span
+                        className={`font-bold text-sm ${
+                          statusColors[report.status as keyof typeof statusColors]
+                        } text-white px-2 py-0.5 rounded`}
+                      >
+                        {statusLabels[report.status as keyof typeof statusLabels]}
+                      </span>
+                      <span
+                        className={`text-xs font-medium px-2 py-0.5 rounded ${
+                          report.urgency === 'high'
+                            ? 'bg-error-600 text-white'
+                            : report.urgency === 'medium'
+                              ? 'bg-warning-600 text-white'
+                              : 'bg-success-600 text-white'
+                        }`}
+                      >
+                        {urgencyLabels[report.urgency as keyof typeof urgencyLabels]}
+                      </span>
+                    </div>
+                    <div className="text-sm text-card-foreground space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Users className="size-3 text-muted-foreground" />
+                        <span>{report.peopleCount} người</span>
+                      </div>
+                      {report.hasVulnerable && (
+                        <div className="text-xs text-warning-600 dark:text-warning-400">
+                          ⚠️ Có người già/trẻ em/khuyết tật
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Clock className="size-3" />
+                        {formatTime(report.createdAt)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        window.location.href = 'tel:113'
+                      }}
+                      className="bg-error-600 hover:bg-error-700 text-white rounded-md px-2 py-1 text-xs font-medium flex items-center justify-center gap-1 transition-colors"
+                    >
+                      <Phone className="size-3" />
+                      113
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        window.location.href = 'tel:114'
+                      }}
+                      className="bg-error-600 hover:bg-error-700 text-white rounded-md px-2 py-1 text-xs font-medium flex items-center justify-center gap-1 transition-colors"
+                    >
+                      <Phone className="size-3" />
+                      114
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        window.location.href = 'tel:115'
+                      }}
+                      className="bg-error-600 hover:bg-error-700 text-white rounded-md px-2 py-1 text-xs font-medium flex items-center justify-center gap-1 transition-colors"
+                    >
+                      <Phone className="size-3" />
+                      115
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Sidebar version (original)
   return (
     <>
       {/* Toggle Button */}
