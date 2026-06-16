@@ -3,11 +3,15 @@
 interface LayerTogglesProps {
   showRisk: boolean
   onToggleRisk: (show: boolean) => void
+  showWeather?: boolean
+  onToggleWeather?: (show: boolean) => void
 }
 
 export function LayerToggles({
   showRisk,
   onToggleRisk,
+  showWeather = false,
+  onToggleWeather,
 }: LayerTogglesProps) {
   return (
     <div className="bg-card shadow-md rounded-md p-3 border border-border">
@@ -24,6 +28,17 @@ export function LayerToggles({
           />
           <span className="text-card-foreground">Vùng Nguy Cơ</span>
         </label>
+        {onToggleWeather && (
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showWeather}
+              onChange={(e) => onToggleWeather(e.target.checked)}
+              className="rounded border-border"
+            />
+            <span className="text-card-foreground">Thời tiết</span>
+          </label>
+        )}
       </div>
     </div>
   )

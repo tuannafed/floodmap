@@ -38,6 +38,7 @@ export default function Page() {
 
   // Layer visibility states
   const [showRisk, setShowRisk] = useState(true)
+  const [showWeather, setShowWeather] = useState(false)
 
   // Refs to prevent loop calls
   const centerRef = useRef(center)
@@ -342,6 +343,7 @@ export default function Page() {
             sosReports={sosReports}
             selectedSos={selectedSos}
             showRisk={showRisk}
+            showWeather={showWeather}
             onMove={(viewState) => {
               // Optional: handle map movement
             }}
@@ -358,6 +360,8 @@ export default function Page() {
             <LayerToggles
               showRisk={showRisk}
               onToggleRisk={setShowRisk}
+              showWeather={showWeather}
+              onToggleWeather={setShowWeather}
             />
           </div>
 
@@ -374,6 +378,8 @@ export default function Page() {
                   <LayerToggles
                     showRisk={showRisk}
                     onToggleRisk={setShowRisk}
+                    showWeather={showWeather}
+                    onToggleWeather={setShowWeather}
                   />
                 </div>
               </div>

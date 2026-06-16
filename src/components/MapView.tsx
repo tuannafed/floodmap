@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import {
   Map,
   Source,
@@ -23,6 +23,17 @@ import {
 } from '@/lib/maplibre'
 import { SosPopup } from './SosPopup'
 import { MAP_STYLE_URL } from '@/constants'
+import { LayerMenu } from './LayerMenu'
+import { Legend } from './Legend'
+import { WindLegend } from './WindLegend'
+import { TemperatureLegend } from './TemperatureLegend'
+import {
+  WeatherLayer,
+  fetchRainviewerTimeline,
+  owmTile,
+  getOWMEnabled,
+  getRadarTileUrl,
+} from '@/lib/weather'
 
 export interface SosReport {
   id: string
@@ -42,6 +53,7 @@ interface MapViewProps {
   sosReports?: SosReport[]
   selectedSos?: SosReport | null
   showRisk?: boolean
+  showWeather?: boolean
   onMove?: (viewState: {
     latitude: number
     longitude: number
@@ -493,6 +505,7 @@ export default function MapView({
   sosReports,
   selectedSos,
   showRisk = true,
+  showWeather = false,
   onMove,
   onSosSelect,
 }: MapViewProps) {
@@ -504,9 +517,17 @@ export default function MapView({
     bearing: 0,
   })
 
+  // Weather layers state
+  const [activeWeatherLayer, setActiveWeatherLayer] =
+    useState<WeatherLayer>('rain')
+  const [radarFrames, setRadarFrames] = useState<number[]>([])
+  const [radarFrameIdx, setRadarFrameIdx] = useState(0)
+  const [isPlayingRadar, setIsPlayingRadar] = useState(false)
+
   const mapRef = useRef<any>(null)
   const prevCenterRef = useRef<{ lat: number; lon: number }>(center)
   const isFlyingRef = useRef(false)
+  const hasOWM = getOWMEnabled()
 
   // Fly to center when it changes (e.g., from search)
   // Skip if we're already flying to a selected SOS
@@ -568,6 +589,140 @@ export default function MapView({
     }
   }, [selectedSos])
 
+  // Fetch rainviewer timeline for radar animation
+  useEffect(() => {
+    fetchRainviewerTimeline().then(setRadarFrames)
+  }, [])
+
+  // Radar animation loop - slower to reduce API calls and improve performance
+  useEffect(() => {
+    if (!isPlayingRadar || radarFrames.length === 0) return
+
+    const interval = setInterval(() => {
+      setRadarFrameIdx((i) => (i + 1) % radarFrames.length)
+    }, 1500) // 1500ms per frame - slower to reduce API calls and improve smoothness
+
+    return () => clearInterval(interval)
+  }, [isPlayingRadar, radarFrames])
+
+  // Generate radar URL for current frame (using proxy API)
+  const radarUrl = useMemo(() => {
+    if (radarFrames.length === 0) return null
+    return getRadarTileUrl(radarFrames[radarFrameIdx])
+  }, [radarFrames, radarFrameIdx])
+
+  // Generate OWM tile URLs
+  const tempUrl = hasOWM ? owmTile('temp') : ''
+  const windUrl = hasOWM ? owmTile('wind') : ''
+  const aqiUrl = hasOWM ? owmTile('aqi') : ''
+
+  const showWeatherLayer = useCallback(
+    (name: WeatherLayer) => activeWeatherLayer === name,
+    [activeWeatherLayer]
+  )
+
+  // Throttled update source tiles when URL changes during animation
+  // Only update when showWeather is true and throttle to reduce API calls
+  useEffect(() => {
+    if (
+      !mapRef.current ||
+      !radarUrl ||
+      activeWeatherLayer !== 'rain' ||
+      !showWeather
+    )
+      return
+
+    const map = mapRef.current.getMap()
+    if (!map || !map.loaded()) return
+
+    // Throttle updates - only update after a short delay to batch changes
+    const timeoutId = setTimeout(() => {
+      try {
+        const source = map.getSource('rain-radar')
+        if (source) {
+          // Directly update tiles URL - MapLibre will handle caching
+          // Use setTiles if available, otherwise remove and re-add
+          if ('setTiles' in source && typeof source.setTiles === 'function') {
+            source.setTiles([radarUrl])
+          } else {
+            // Fallback: remove and re-add
+            if (map.getLayer('rain-radar-layer')) {
+              map.removeLayer('rain-radar-layer')
+            }
+            if (map.getSource('rain-radar')) {
+              map.removeSource('rain-radar')
+            }
+
+            map.addSource('rain-radar', {
+              type: 'raster',
+              tiles: [radarUrl],
+              tileSize: 256,
+            })
+
+            map.addLayer({
+              id: 'rain-radar-layer',
+              type: 'raster',
+              source: 'rain-radar',
+              layout: {
+                visibility: 'visible',
+              },
+              paint: {
+                'raster-opacity': 0.5,
+                'raster-brightness-min': 0.1,
+                'raster-brightness-max': 1.0,
+                'raster-contrast': 1,
+                'raster-saturation': 1,
+              },
+            })
+          }
+        }
+      } catch (error) {
+        // Source might not exist yet, ignore error
+        console.debug('Radar source update:', error)
+      }
+    }, 100) // Small delay to batch rapid updates
+
+    return () => clearTimeout(timeoutId)
+  }, [radarUrl, radarFrameIdx, activeWeatherLayer, showWeather])
+
+  // Clean up weather layers when showWeather is false
+  useEffect(() => {
+    if (!mapRef.current || showWeather) return
+
+    const map = mapRef.current.getMap()
+    if (!map || !map.loaded()) return
+
+    try {
+      // Remove all weather layers when showWeather is false
+      const weatherLayers = [
+        'rain-radar-layer',
+        'temp-weather-layer',
+        'wind-weather-layer',
+        'aqi-weather-layer',
+      ]
+      const weatherSources = [
+        'rain-radar',
+        'temp-weather',
+        'wind-weather',
+        'aqi-weather',
+      ]
+
+      weatherLayers.forEach((layerId) => {
+        if (map.getLayer(layerId)) {
+          map.removeLayer(layerId)
+        }
+      })
+
+      weatherSources.forEach((sourceId) => {
+        if (map.getSource(sourceId)) {
+          map.removeSource(sourceId)
+        }
+      })
+    } catch (error) {
+      console.debug('Weather layers cleanup:', error)
+    }
+  }, [showWeather])
+
   // Get Mapbox token from environment variable
   const mapboxToken =
     typeof window !== 'undefined'
@@ -607,54 +762,210 @@ export default function MapView({
   }, [])
 
   return (
-    <Map
-      ref={mapRef}
-      mapLib={maplibregl}
-      initialViewState={viewState}
-      onMove={handleMove}
-      style={{ width: '100%', height: '100%' }}
-      mapStyle={MAP_STYLE_URL}
-      maxBounds={[
-        [100, 6.0], // Southwest (mở rộng về phía Tây và Nam)
-        [112, 25.0], // Northeast (mở rộng về phía Đông và Bắc)
-      ]}
-      interactiveLayerIds={[
-        layers.sosClusters.layerId,
-        layers.sosUnclustered.layerId,
-      ]}
-    >
-      {/* NavigationControl removed - zoom toolbar hidden */}
-      <GeolocateControl position="top-left" />
-      <FullscreenControl position="top-left" />
-      <NavigationControl position="top-left" />
+    <>
+      <Map
+        ref={mapRef}
+        mapLib={maplibregl}
+        initialViewState={viewState}
+        onMove={handleMove}
+        style={{ width: '100%', height: '100%' }}
+        mapStyle={MAP_STYLE_URL}
+        maxBounds={[
+          [100, 6.0], // Southwest (mở rộng về phía Tây và Nam)
+          [112, 25.0], // Northeast (mở rộng về phía Đông và Bắc)
+        ]}
+        interactiveLayerIds={[
+          layers.sosClusters.layerId,
+          layers.sosUnclustered.layerId,
+        ]}
+      >
+        {/* NavigationControl removed - zoom toolbar hidden */}
+        <GeolocateControl position="top-left" />
+        <FullscreenControl position="top-left" />
+        <NavigationControl position="top-left" />
 
-      <RiskLayer
-        riskZones={riskZones}
-        show={showRisk}
-      />
-      <CenterMarker center={center} />
-      <SosMarkersLayerInner
-        sosReports={sosReports}
-        selectedSos={selectedSos}
-        onSelectSos={onSosSelect}
-      />
+        <RiskLayer
+          riskZones={riskZones}
+          show={showRisk}
+        />
+        <CenterMarker center={center} />
+        <SosMarkersLayerInner
+          sosReports={sosReports}
+          selectedSos={selectedSos}
+          onSelectSos={onSosSelect}
+        />
 
-      {/* Popup for selected SOS - must be rendered directly in Map */}
-      {selectedSos && (
-        <Popup
-          longitude={selectedSos.lon}
-          latitude={selectedSos.lat}
-          anchor="bottom"
-          onClose={() => onSosSelect?.(null)}
-          closeButton={false}
-          closeOnClick={true}
-        >
-          <SosPopup
-            report={selectedSos}
+        {/* Popup for selected SOS - must be rendered directly in Map */}
+        {selectedSos && (
+          <Popup
+            longitude={selectedSos.lon}
+            latitude={selectedSos.lat}
+            anchor="bottom"
             onClose={() => onSosSelect?.(null)}
-          />
-        </Popup>
+            closeButton={false}
+            closeOnClick={true}
+          >
+            <SosPopup
+              report={selectedSos}
+              onClose={() => onSosSelect?.(null)}
+            />
+          </Popup>
+        )}
+
+        {/* Weather Layers - Only render when showWeather is true */}
+        {showWeather && (
+          <>
+            {/* Rain radar (raster) */}
+            {radarUrl && (
+              <Source
+                key={`rain-radar-${radarFrameIdx}`}
+                id="rain-radar"
+                type="raster"
+                tiles={[radarUrl]}
+                tileSize={256}
+              >
+                <Layer
+                  id="rain-radar-layer"
+                  type="raster"
+                  layout={{
+                    visibility: showWeatherLayer('rain') ? 'visible' : 'none',
+                  }}
+                  paint={{
+                    'raster-opacity': 0.5,
+                    'raster-brightness-min': 0.1,
+                    'raster-brightness-max': 1.0,
+                    'raster-contrast': 1,
+                    'raster-saturation': 1,
+                    'raster-opacity-transition': { duration: 1000 },
+                    'raster-brightness-min-transition': { duration: 1000 },
+                    'raster-brightness-max-transition': { duration: 1000 },
+                    'raster-contrast-transition': { duration: 1000 },
+                    'raster-saturation-transition': { duration: 1000 },
+                  }}
+                />
+              </Source>
+            )}
+
+            {/* Temperature / Wind / AQI (OpenWeatherMap raster) */}
+            {hasOWM && (
+              <>
+                <Source
+                  id="temp-weather"
+                  type="raster"
+                  tiles={[tempUrl]}
+                  tileSize={256}
+                >
+                  <Layer
+                    id="temp-weather-layer"
+                    type="raster"
+                    layout={{
+                      visibility: showWeatherLayer('temp') ? 'visible' : 'none',
+                    }}
+                    paint={{
+                      'raster-opacity': 0.5,
+                      'raster-brightness-min': 0.1,
+                      'raster-brightness-max': 1.0,
+                      'raster-contrast': 1,
+                      'raster-saturation': 1,
+                    }}
+                  />
+                </Source>
+
+                <Source
+                  id="wind-weather"
+                  type="raster"
+                  tiles={[windUrl]}
+                  tileSize={256}
+                >
+                  <Layer
+                    id="wind-weather-layer"
+                    type="raster"
+                    layout={{
+                      visibility: showWeatherLayer('wind') ? 'visible' : 'none',
+                    }}
+                    paint={{
+                      'raster-opacity': 1,
+                      'raster-brightness-min': 0.1,
+                      'raster-brightness-max': 1.0,
+                      'raster-contrast': 1,
+                      'raster-saturation': 1,
+                    }}
+                  />
+                </Source>
+
+                <Source
+                  id="aqi-weather"
+                  type="raster"
+                  tiles={[aqiUrl]}
+                  tileSize={256}
+                >
+                  <Layer
+                    id="aqi-weather-layer"
+                    type="raster"
+                    layout={{
+                      visibility: showWeatherLayer('aqi') ? 'visible' : 'none',
+                    }}
+                    paint={{ 'raster-opacity': 0.1 }}
+                  />
+                </Source>
+              </>
+            )}
+          </>
+        )}
+      </Map>
+      {showWeather && (
+        <WeatherOverlay
+          activeWeatherLayer={activeWeatherLayer}
+          onWeatherLayerChange={setActiveWeatherLayer}
+          isPlayingRadar={isPlayingRadar}
+          onToggleRadarPlay={() => setIsPlayingRadar((p) => !p)}
+          radarFrameIdx={radarFrameIdx}
+          radarFrames={radarFrames}
+        />
       )}
-    </Map>
+    </>
+  )
+}
+
+// Weather UI Overlay Component
+function WeatherOverlay({
+  activeWeatherLayer,
+  onWeatherLayerChange,
+  isPlayingRadar,
+  onToggleRadarPlay,
+  radarFrameIdx,
+  radarFrames,
+}: {
+  activeWeatherLayer: WeatherLayer
+  onWeatherLayerChange: (layer: WeatherLayer) => void
+  isPlayingRadar: boolean
+  onToggleRadarPlay: () => void
+  radarFrameIdx: number
+  radarFrames: number[]
+}) {
+  return (
+    <div className="pointer-events-none absolute bottom-20 sm:bottom-4 left-4 space-y-3 z-50">
+      <div className="pointer-events-auto rounded-2xl bg-black/40 p-3 backdrop-blur-md w-56">
+        <LayerMenu
+          active={activeWeatherLayer}
+          onChange={onWeatherLayerChange}
+          playing={isPlayingRadar}
+          onTogglePlay={onToggleRadarPlay}
+        />
+      </div>
+      {activeWeatherLayer === 'rain' && (
+        <Legend
+          isPlaying={isPlayingRadar}
+          currentFrame={radarFrameIdx}
+          totalFrames={radarFrames.length}
+        />
+      )}
+      {activeWeatherLayer === 'wind' && (
+        <WindLegend isPlaying={isPlayingRadar} />
+      )}
+      {activeWeatherLayer === 'temp' && (
+        <TemperatureLegend isPlaying={isPlayingRadar} />
+      )}
+    </div>
   )
 }
