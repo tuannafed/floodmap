@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# caw harness-cli wrapper — execs the binary shipped by the caw plugin.
+# Stable path for all tools; harness.db resolves to the current project root.
+set -euo pipefail
+
+# 1. Prefer the plugin root Claude Code injects when it invokes a hook/command.
+if [[ -n "${CLAUDE_PLUGIN_ROOT:-}" && -f "$CLAUDE_PLUGIN_ROOT/harness/bin/harness-cli" ]]; then
+  exec python3 "$CLAUDE_PLUGIN_ROOT/harness/bin/harness-cli" "$@"
+fi
+
+# 2. No (valid) plugin root: discover the binary under the plugins dir. Match any
+#    cache layout — we do NOT assume .../cache/caw/caw — and take the first hit.
+plugins_dir="${HOME}/.claude/plugins"
+if [[ -d "$plugins_dir" ]]; then
+  found="$(find "$plugins_dir" -type f -path '*/caw/harness/bin/harness-cli' 2>/dev/null | head -n1)"
+  if [[ -n "$found" ]]; then
+    exec python3 "$found" "$@"
+  fi
+fi
+
+# 3. Give up loudly — never exec a guessed path.
+echo "caw: harness-cli not found." >&2
+echo "  Run this from inside Claude Code (which sets CLAUDE_PLUGIN_ROOT)," >&2
+echo "  or export CLAUDE_PLUGIN_ROOT to the caw plugin directory, e.g.:" >&2
+echo "    export CLAUDE_PLUGIN_ROOT=~/.claude/plugins/<...>/caw" >&2
+exit 1
