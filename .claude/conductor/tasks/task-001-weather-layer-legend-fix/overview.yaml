@@ -1,0 +1,21 @@
+id: task-001-weather-layer-legend-fix
+title: Fix bottom-left radar/weather layer control buttons and legends
+status: plan-done
+lane: tiny
+type: bug
+next_phase: aqi-legend-fix
+created: 2026-09-08T00:00:00+07:00
+updated: 2026-09-08T00:00:00+07:00
+related_tasks: []
+
+phases:
+  - id: aqi-legend-fix
+    status: pending
+    files: src/components/AqiLegend.tsx, src/components/MapView.tsx
+    depends_on: []
+    skills_hint: [next-best-practices, tailwind-design-system]
+  - id: radar-toggle-fix
+    status: pending
+    files: src/components/LayerMenu.tsx, src/components/MapView.tsx, src/components/WindLegend.tsx, src/components/TemperatureLegend.tsx
+    depends_on: [aqi-legend-fix]
+    skills_hint: [next-best-practices, tailwind-design-system]

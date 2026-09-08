@@ -39,23 +39,19 @@ next-env.d.ts
 .cursor/
 .cursorignore
 
-# >>> caw (machine-local) >>>
-harness.db
-harness.db-wal
-harness.db-shm
-.claude/
-# <<< caw (machine-local) <<<
-
-# >>> caw (claude-agent-team) >>>
-# Skills + caw config are machine-local — regenerate via caw init / /caw-setup
-.agents/
-.claude/
-CLAUDE.md
-skills-lock.json
-# <<< caw (claude-agent-team) <<<
-
 # Backlog viewer (caw) — local install
 .claude/backlog-viewer/node_modules/
 .claude/backlog-viewer/dist/
 .claude/backlog-viewer/.astro/
 .claude/backlog-viewer/.vercel/
+
+# >>> caw (claude-agent-team) >>>
+# machine-local only — the rest of .claude/ is committed; regenerate these via caw init / /caw-setup
+.agents/
+.claude/skills/
+.claude/logs/
+.claude/caw.config.json
+.claude/.caw-backup/
+.claude/settings.local.json
+skills-lock.json
+# <<< caw (claude-agent-team) <<<
