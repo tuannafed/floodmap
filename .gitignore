@@ -45,3 +45,17 @@ harness.db-wal
 harness.db-shm
 .claude/
 # <<< caw (machine-local) <<<
+
+# >>> caw (claude-agent-team) >>>
+# Skills + caw config are machine-local — regenerate via caw init / /caw-setup
+.agents/
+.claude/
+CLAUDE.md
+skills-lock.json
+# <<< caw (claude-agent-team) <<<
+
+# Backlog viewer (caw) — local install
+.claude/backlog-viewer/node_modules/
+.claude/backlog-viewer/dist/
+.claude/backlog-viewer/.astro/
+.claude/backlog-viewer/.vercel/
