@@ -189,3 +189,9 @@ A bulk / multi-row INSERT, a widened enum backing a DB column, a write relied on
 - Every `pipeline-postmortems.md` row whose table/module matches this task becomes a risk row citing the postmortem id.
 - An architecture choice needs an ADR **and** its index row in the same turn (`harness-contract.md` § ADRs).
 - Lane is decided by blast radius per `agents/planner.md` § Lane; `risky` needs user confirmation and is never auto-downgraded. `intake.md` and `backlog.md` point here, not the reverse.
+
+## 6. Parallelization groups — grep disjointness, don't assert it
+Before setting `parallelization_groups` (`agents/planner.md` Step 5), grep-verify — don't assert — that every phase grouped together edits disjoint files. Recurred twice live (HB-003, HB-019): a plan claimed grouped phases "touch different files" with no grep run, and both collided on the same shared file mid-coding (`app/main.py` + a DI container file once; a shared service module a second time), undetected until the coders found it themselves.
+1. List each phase's own `files:` entries (plus anything its `## Consumers` block names) and diff those lists across every phase in the same group. Any file — or, for a shared function/class, its defining module — appearing under more than one phase is a collision: move one colliding phase to a later, sequential group.
+2. A phase whose scope is only "wire the new thing into whatever router/container file already exists" cannot be verified from its own `files:` entry — grep the project's actual entrypoint/DI/router file for its likely edit point before grouping it with any sibling phase. Top-level wiring files are the most common collision (both HB-003 and HB-019 were exactly this).
+3. If disjointness can't be confirmed for a group, don't group it — a sequential phase costs wall-clock; a live file collision costs a FIX-ROUND plus a coder's wasted turn re-doing work around a conflict nobody flagged at plan time.

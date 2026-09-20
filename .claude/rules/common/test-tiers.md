@@ -50,6 +50,15 @@ writing it.
   dedicated `test:db` step, or run Tier-2 locally only and say so explicitly — never fold the
   tier back into the default `test` command.
 
+### Tier 3 — System test (runs LAST, after Tier 1/2 and E2E are green)
+
+The whole integrated system through its own real interface (CLI, HTTP, a file drop) — never a
+test-framework harness. Trigger: the task touches a runtime surface (HTTP route, DB schema,
+worker/daemon, CLI, env config, response schema). Detail and agent posture: `agents/tester.md`
+Step 3b, skill `runtime-smoke-test`. Gate: `tests.md` names a result (pass /
+skipped-with-reason / pending-user) before any `ready-to-commit` verdict — silently absent on a
+runtime-surface task is a finding.
+
 ---
 
 ## Mandatory checks (coder + reviewer)
@@ -183,6 +192,21 @@ writing it.
     helper that silently dropped one field was invisible to every happy-path test because the
     whole service was mocked and the fixture was hand-written to the server's type.
 
+13. **A scenario driven through the app's own real, audited/logged endpoint (Tier-2/3) must
+    revert the side effect that endpoint writes, not just the field it changed.** This is
+    distinct from check #2: #2 covers rows *the test itself inserts*; this covers a **secondary**
+    table the app writes to as a side effect of a mutation the test made against a *shared or
+    pre-existing* row (a status PATCH that also appends to an audit log / event log / history
+    table). Log tables are append-only — there is no "before" state to restore, so reverting the
+    target field back to its original value does **not** undo the log insert. Teardown must
+    capture the exact log-row id(s) the scenario's own call created (read the id the endpoint
+    returns, or the table's max id immediately before the call) and delete precisely those ids
+    afterward. Prefer wrapping the whole scenario in a transaction/savepoint and rolling back
+    over manual revert-by-value when the endpoint's DB layer allows it — that undoes the primary
+    row *and* every secondary side effect in one step, so there is nothing to enumerate by hand.
+    Left undone, the secondary table accumulates phantom history that the next session (or a
+    row-count/content assertion) cannot distinguish from real activity.
+
 ---
 
 ## Triage protocol when the suite is broadly red
@@ -202,6 +226,7 @@ Before "fixing" anything, classify each failing file — the fix differs per cla
 | `spyOn` throws "namespace not configurable" (builtin/instrumented module) | Builtin/instrumented namespace (check #7) | Add a plain-object seam and spy that |
 | A `vi.mock("../config/env")` (or any module) override never takes effect in a test that loads the app; values read back as real/default | `setupFiles` eager import evaluated the module before the mock was hoisted (check #6) | Drop the `vi.mock`; import the real object + `Object.assign`, or `import * as mod` + `vi.spyOn` re-spied in `beforeEach` |
 | A file fails on connection in the unit lane / CI, and it is named `*.test.*` instead of `*.db.test.*` (or lacks the Tier-2 project tag) | Tier-2 file declared as Tier-1 — runs in the wrong lane | Rename / tag it so the runner schedules it with the DB lane; never "fix" it by adding mocks |
+| An audit/event/history table holds rows referencing a real, non-test-fixture entity that no current test intentionally created | Tier-2/3 leak via a real audited endpoint (check #13) — reverting the mutated field doesn't undo the log insert | Capture the log-row id(s) the scenario's own call created and delete exactly those; prefer a transaction/savepoint rollback around the whole scenario instead |
 
 ---
 

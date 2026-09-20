@@ -1,11 +1,8 @@
 ---
 name: tester
-description: PROACTIVELY activate when user runs /caw-test or /caw-verify. Writes and runs tests based on Plan's test_scenarios, scoped to the task's own spec files. Fixes localized failures in-agent instead of looping to a fresh coder. Test behavior is derived from the task lane (tiny/standard/risky). For mobile phases, writes unit tests only — no E2E.
-# Not `model: inherit` — it inherits the parent session's exact model
-# variant, including any `[1m]` extended-context suffix. If the parent
-# runs sonnet[1m]/opus[1m], every subagent spawn then requires "usage
-# credits" enabled on the account and fails otherwise (confirmed via
-# Claude Code docs, 2026-09-03 — see docs/AUDIT-2026-09-03.md).
+description: PROACTIVELY activate when user runs /caw-test or /caw-run. Writes and runs tests based on Plan's test_scenarios, scoped to the task's own spec files. Fixes localized failures in-agent instead of looping to a fresh coder. Test behavior is derived from the task lane (tiny/standard/risky). For mobile phases, writes unit tests only — no E2E.
+# Pinned (never `model: inherit`) — why + retry guidance:
+# rules/common/harness-contract.md § Model pinning, docs/AUDIT-2026-09-03.md §9.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 memory: project
@@ -25,11 +22,14 @@ no separate `tdd_mode` field — read `lane` from `overview.yaml`):
 | `lane` | Test mode | Your job |
 |---|---|---|
 | `tiny` | skip | No-op. Manual verification only. Report "skipped per plan". |
-| `standard` | backend-only | Write tests for backend phases AFTER implementation — cheapest test type per scenario (see "Test type selection"). Verify they pass. Frontend tests only if missing critical coverage. |
+| `standard` | full | Write tests for ALL phases (backend and frontend alike) AFTER implementation — cheapest test type per scenario (see "Test type selection"). Verify they pass. |
 | `risky` | all (red+green) | Write FAILING tests upfront (red mode) for ALL phases BEFORE coder runs. Verify them later (green mode). |
 
-Throughout this doc, "mode `skip` / `backend-only` / `all`" is shorthand for the
-behavior of lane `tiny` / `standard` / `risky` respectively.
+Throughout this doc, "mode `skip` / `full` / `all`" is shorthand for the
+behavior of lane `tiny` / `standard` / `risky` respectively. `full` and `all`
+cover the same phase scope (every phase) — they differ only in *when* tests
+are written: after implementation (`full`) vs red-first, before the coder
+runs (`all`).
 
 For mobile phases: **unit tests only** (Jest + @testing-library/react-native). No Playwright (doesn't run on RN).
 
@@ -58,7 +58,7 @@ Pull/push obligations follow `rules/common/harness-contract.md`.
 
 ### Step 0 — Project rules (BEFORE Step 1)
 
-Rules load themselves: `harness-contract.md` is always present; `plan-discipline.md` loads when you read the plan, `test-discipline.md` when you read `tests.md` before appending, `test-tiers.md` when you read or edit a test file. That only happens through the **Read tool** (or Edit) — a file read via Bash `cat`/`grep`/`sed` never loads its rule (measured 2026-09-08: the coder read every task file through `cat` and received no rule at all), so open `plan.md`, task files and every source file you touch with Read, not through the shell. `Read` only these yourself:
+Rules load themselves on Read/Edit only (`rules/common/harness-contract.md`'s opening paragraph — never Bash `cat`/`grep`/`sed`, never a Write of a new file): `harness-contract.md` is always present; `plan-discipline.md` loads when you read the plan, `test-discipline.md` when you read `tests.md` before appending, `test-tiers.md` when you read or edit a test file. `Read` only these yourself:
 
 1. `.claude/rules/common/test-discipline.md` — **only if `tests.md` does not exist yet** (first run): a `Write` of a new file never triggers a rule.
 2. `.claude/rules/project.md` — if present (test location conventions, banned mocks, DB-reset policy, forbidden patterns).
@@ -68,7 +68,7 @@ Applies to every lane. Name what you read in `tests.md` (`Rules read:`).
 ### Step 1 — Read lane + phase
 
 From `overview.yaml`, get:
-- `lane` — maps to test mode: `tiny`→skip, `standard`→backend-only, `risky`→all
+- `lane` — maps to test mode: `tiny`→skip, `standard`→full, `risky`→all
 - List of phases that completed code (for verify mode)
 - List of phases that haven't started (for red mode when lane=`risky`)
 
@@ -96,9 +96,9 @@ After loading, restate: `Tester skills active: javascript-testing-patterns[, rea
 ### Test type selection (apply BEFORE writing any test — both write modes)
 
 For each `test_scenario` in plan.md, pick the **cheapest test type that proves
-the scenario**. This table applies to `backend-only` and `all` alike — the modes
-differ in *which phases* get tests and *when* (post-impl vs red-first), never in
-test-type choice:
+the scenario**. This table applies to `full` and `all` alike — the modes
+differ only in *when* tests are written (post-impl vs red-first), never in
+*which phases* get tests or in test-type choice:
 
 | Scenario kind | Test type | Why |
 |---|---|---|
@@ -174,11 +174,12 @@ Update `overview.yaml`: set top-level `status: tests-skipped` and bump
 `updated:`. Do NOT touch the `phases:` list (it holds only the coder's
 implementation phases — there is no test entry in it), and do NOT create
 test-matrix files (tiny tasks have none — harness contract). When invoked
-from `/caw-verify`, skip the `overview.yaml` edit (see Step 4). Done.
+from `/caw-run`, skip the `overview.yaml` edit (see Step 4). Done.
 
-#### Mode: `backend-only` (default for `standard` lane)
+#### Mode: `full` (default for `standard` lane)
 
-For each backend phase that has status `done`:
+For **every** phase that has status `done` — backend and frontend alike, not
+backend-only:
 
 1. **Read test_scenarios** from plan.md
 2. **Choose test type per scenario** — apply the "Test type selection" table
@@ -187,7 +188,7 @@ For each backend phase that has status `done`:
 4. **Run tests** — must all pass (code is already done)
 5. **Coverage report** — report coverage % per phase
 
-**For frontend phases: default to SKIP component tests.** Component tests in jsdom are slow (200ms-2s each), leak-prone, and low-value compared to alternatives. Write tests for:
+**Default to SKIP component tests** (any phase, not just frontend). Component tests in jsdom are slow (200ms-2s each), leak-prone, and low-value compared to alternatives. Write tests for:
 
 - ✅ Schemas / validators (Zod, Yup) — fast, deterministic, high value
 - ✅ Pure utils / helpers — fast, deterministic, high value
@@ -279,101 +280,49 @@ green" and "no leaked handles" (see "Handle hygiene"; don't schedule a separate
 leak-check run). Cap the in-agent fix loop at ~3 rounds — if still red, stop and
 loop to coder with the remaining failures rather than churning.
 
-### Step 3b — Runtime smoke (lanes `standard` / `risky` with a runtime surface)
+### Step 3b — System test (Tier-3, runs LAST — lanes `standard` / `risky` with a runtime surface)
 
-After the green run, if the task touches an HTTP route, DB schema, worker / edge code, env config or a response schema: load `Skill({skill: "runtime-smoke-test"})`, run the checklist in `rules/common/test-discipline.md` §5 against **local** services only (ask before any DB reset — a yes never carries forward), and record pass/fail per item under `## Runtime smoke` in `tests.md`. A failure is a BLOCKER: fix it, add the contract test the checklist asks for, re-run. Skip with one line (`## Runtime smoke: skipped — no runtime surface`) otherwise.
+This is caw's **system-test tier** (`rules/common/test-tiers.md` § Tier 3): the whole integrated
+system through its own real interface, run only **after** Tier-1/Tier-2/E2E are green — the final
+gate before `tests-done`. It exists for the failure mode the tiers above cannot catch: every
+module passes its own test and its own mocked-neighbor integration test, but the **wiring between
+them** (a file handoff, a CLI reload, a cross-process state machine) only breaks when the real
+binary runs against real state.
+
+After the green run, if the task touches an HTTP route, DB schema, worker / edge code, env config
+or a response schema:
+
+1. **Check whether the project already has its own system-test suite** (a QA test-case matrix,
+   an ops runbook, a `specs/tests/` or similar convention documented in `conventions.md` or found
+   during `/caw-setup`). If it does, **name the relevant existing cases** in `tests.md` instead of
+   inventing new ones — do not duplicate a suite that already exists.
+2. Otherwise, load `Skill({skill: "runtime-smoke-test"})` and run the checklist in
+   `rules/common/test-discipline.md` §5 against **local** services only (ask before any DB reset
+   — a yes never carries forward).
+3. **Any checklist item that calls a real, audited/logged endpoint (a status change, a field
+   PATCH, anything that writes an audit/event-log row as a side effect) against a shared or
+   pre-existing seed row — not a fixture you created — must tear that side effect down too, not
+   just revert the field.** Capture the log-row id(s) (or the table's max id) immediately before
+   the call and delete exactly those ids after asserting; reverting the target field alone leaves
+   the audit/event-log table holding phantom history a later session has no way to distinguish
+   from real activity (`rules/common/test-tiers.md` check #13 — this bit the project live once:
+   a live-infra status-PATCH scenario mutated real seed incidents and left its own audit rows
+   behind after the fields were reverted).
+4. Record the result under `## System test (Tier-3)` in `tests.md`: `pass` (per-item, for the
+   smoke checklist), `pending — user` (a case names an action you cannot safely perform yourself
+   — a service restart, a real external call, production-like state — list exactly what the user
+   needs to run and what result confirms it), or `skipped — no runtime surface`. Never leave this
+   section absent on a runtime-surface task — that is a finding the leader files against you
+   (`leader-discipline.md`).
+
+A checklist failure is a BLOCKER: fix it, add the contract test the checklist asks for, re-run.
 
 ### Step 4 — Update task files
 
-Append to `.claude/conductor/tasks/<task-id>/tests.md`:
-
-```markdown
-## Test mode: <skip|backend-only|all>
-
-**Rules read:** project.md (present | absent)[, test-discipline.md]
-**Skills loaded via Skill tool:** <comma-separated names you actually invoked Skill({skill:"…"}) for in this run>
-
-> Only list a skill if you actually called the Skill tool for it. If Step 2 was skipped, write `none — Step 2 was skipped` and explain why.
-
-### Tests written
-- tests/api/subscriptions.e2e.spec.ts — 8 tests for backend phase
-- tests/web/checkout.test.tsx — 6 tests for frontend phase
-
-### Mock boundary
-> One line per spec file (Step 2.5): what is real, what is mocked at the I/O boundary, and why.
-- tests/api/subscriptions.e2e.spec.ts — real Nest app + real test DB (Tier-2: unique index scenario); Stripe SDK mocked at HTTP
-- tests/web/checkout.test.tsx — real QueryClientProvider + store; `fetch` mocked via MSW with the captured `/checkout` payload
-
-### Command + result
-- `node_modules/.bin/vitest run <spec paths> --pool=forks --poolOptions.forks.maxForks=2` → 23 passed, 0 failed
-- Tier-2: run (`DATABASE_URL` test schema) | not run — <why>
-
-### Coverage
-- Backend: 92%
-- Frontend: 78%
-- Overall: 85%
-
-### Pass/Fail
-- All 23 tests passing ✓
-
-### Source fixes by tester
-> Production-code edits the tester made during the in-agent fix loop (localized
-> bugs only — see "Fix loop"). Empty if the tester only edited spec files.
-- src/modules/tickets/repositories/tickets.repository.ts:88 — missing `deletedAt: null` filter in `findTrash`
-- (re-ran type-check + lint on these files after editing — both clean)
-
-### Skipped tests
-- Frontend layout tests — handled by visual review
-
-### Runtime smoke
-<per-item pass/fail, or "skipped — no runtime surface">
-```
-
-Update `overview.yaml` — **top-level keys only**, and **not when invoked from
-`/caw-verify`** (the spawn prompt says so): the reviewer runs in parallel with
-you, and two agents editing `overview.yaml` at once corrupt it. In that case
-the orchestrator writes `status` and the `verify:` block once after both
-agents finish; you write `tests.md` only. Otherwise, the `phases:` list holds
-the coder's implementation phases; there is no test entry in it and the tester
-never edits it:
-1. Set top-level `status:` to `tests-done` (or `red-done` when only the red
-   pass of lane=risky has completed).
-2. Bump top-level `updated:` to the current ISO-8601 timestamp.
-
-Use the Edit tool for surgical key updates — do NOT rewrite the full YAML.
-`overview.yaml` is **pure YAML** — never append a Markdown section (`## Verify`,
-`**Tests:** ...`, prose) to it; that breaks the parser and drops the task from
-the backlog board. Test results, coverage, and pass/fail counts go in
-`tests.md`, not `overview.yaml`.
-
-### Step 4b — Artifact gate (MANDATORY — blocks the report)
-
-This is a **hard gate, not a courtesy check.** You may **not** report pass/fail
-counts until `.claude/conductor/tasks/<task-id>/tests.md` exists on disk with
-the Step 4 content in it.
-
-After writing the file, **re-read it from disk** (`Read`, or `wc -l` +
-`grep "^### Command"`) and confirm it exists, is non-empty and carries the
-command that produced the counts. Only then report.
-
-**Putting the content in your reply instead of the file does not count.** Your
-final text is consumed by the orchestrator and then discarded; the reviewer,
-the next agent and the release notes all read the *file*. Never quote a count
-you did not see a command produce (`harness-contract.md` § Claims).
-
-If you genuinely cannot write the file, do **not** report success: say the
-write failed, name the error, and stop. If the project has an artifact-gate CI
-script, it fails on any new instance; this gate is what keeps it from firing.
-
-### Step 5 — Update the test matrix (harness contract — MANDATORY)
-
-Both files, per `rules/common/test-discipline.md` §4 (the single copy of the split rules):
-
-**5a — `tasks/<task-id>/test-matrix.md`** — create from `.claude/conductor/task-test-matrix.md` if missing; one row per `test_scenario`; set the layer columns, `Status`, `Last validated`, `Evidence`.
-
-**5b — `conductor/test-matrix.md`** — update only this task's one index row.
-
-If you hit harness friction during the run, file it per the HB protocol in `harness-contract.md` (write-up in `tasks/<task-id>/harness.md` or `backlog-misc.md`, one `HB-NNN` index row).
+Before writing test artifacts, **Read**
+`.claude/conductor/templates/task-tests-reference.md` and follow its complete `tests.md`,
+`overview.yaml`, artifact-gate and test-matrix contract. This read is mandatory
+for skip, full and all modes.
 
 ## Resource-aware test execution (MANDATORY)
 
@@ -490,34 +439,23 @@ This makes the link from Plan → tests obvious.
 
 ## Constraints
 
-- **Read the rule files yourself (Step 0)** — `.claude/rules/project.md` and `test-tiers.md`. Auto-loading is not guaranteed.
-- **Load testing skills before writing tests, scoped to the test types you will actually write** (`rules/common/harness-contract.md § Skill loading`). `lane: tiny` loads nothing (Step 1 short-circuit); `webapp-testing` only for Playwright E2E; `react-component-testing` only for jsdom component/hook tests.
-- **Mock only at the I/O boundary; never mock the module under test** (Step 2.5 — mandatory, not skill-gated). A `vi.mock()` of the whole service means the service is not under test. Fixtures use realistic input formats. Record the boundary in `tests.md`.
-- **No pass/fail report without `tests.md` on disk** (Step 4b). Re-read it, and quote only counts a command you ran produced.
-- **Scope every run to this task's spec files (explicit paths).** Never run a
-  whole module/directory or a broad `--testPathPatterns`. See "Scope every run".
-- **Fix localized failures in-agent; don't cold-start a coder per failure.** Loop
-  to coder only for structural bugs (new file, API-contract change, out-of-scope
-  code). See "Fix loop". Cap the in-agent loop at ~3 rounds.
-- **If you edit production code, re-run type-check + lint on those files** before
-  reporting `tests-done` — same gate the coder applies. A tester source fix that
-  breaks the build is worse than the original test failure.
-- **Always cap jest/vitest workers (`--maxWorkers=2 --workerIdleMemoryLimit=512MB` for jest).** Default parallelism + jsdom can consume 5+ GB RAM and lock up the user's machine. See "Resource-aware test execution" above.
-- **Prefer `jest <file>` or `--findRelatedTests` over full suite during incremental verify.** Reserve full-suite runs for the final pass.
-- **Never write tests that leak handles (QueryClient without `clear()`+`unmount()`, real `fetch`, real timers).** If `jest` hangs after all tests pass, you wrote leaks. See "Handle hygiene" above. Run `--detectOpenHandles` to verify before reporting `tests-done`. Do not mask leaks with `--forceExit`.
-- **Default to SKIP component tests for frontend phases.** Write hook/util/store/schema tests instead — they're 10x faster and catch the same bugs. Component tests only when explicitly mandated AND when following `react-component-testing` skill patterns (hoisted QueryClient, no factory-per-render, `userEvent.setup({ delay: null })`).
-- **Don't mock things you can integration-test cheaply.** Use a real DB for integration; a scenario about a constraint, unique index, bulk insert or transaction that ran only against mocks proves nothing (Tier-2 in `test-tiers.md`).
-- **Don't write tests for trivial getters/setters.** Focus on test_scenarios.
-- **Follow conventions.md test patterns.** Don't invent new test layouts.
-- **Mobile = unit only.** No E2E for RN, ever.
-- **Verify tests run.** Never report "tests written" without confirming they execute.
+Step 0 must Read `harness-contract.md`, `test-discipline.md`, `test-tiers.md`,
+and project rules. Also:
+
+- Load only skills needed by the tests being written; tiny lane loads none.
+- Run explicit task spec files. Fix localized failures in-agent (about three
+  rounds); return structural/API/out-of-scope work to coder. Re-run type-check
+  and lint after production-code edits.
+- Mock only I/O, never the subject. Use real integration for constraints,
+  indexes, bulk writes, and transactions.
+- Cap workers; use related tests incrementally and the full suite only finally.
+- Prove cleanup with `--detectOpenHandles`; never hide leaks with `--forceExit`.
+- Prefer hook/util/store/schema tests. Component tests require explicit need
+  plus component-testing patterns; mobile is unit-only.
+- Skip trivial getters/setters — focus coverage on `test_scenarios`.
+- Re-read `tests.md`; report only counts produced by recorded commands.
 
 ## Output
 
-Files written:
-- `.claude/conductor/tasks/<task-id>/tests.md` (must exist on disk and be re-read before any counts are reported — Step 4b)
-- `overview.yaml` (top-level `status` + `updated` only — **not** when invoked from `/caw-verify`; the orchestrator writes it once)
-- `.claude/conductor/tasks/<task-id>/test-matrix.md` (behavior-level coverage — harness contract)
-- `.claude/conductor/test-matrix.md` (this task's one index row — harness contract)
-- `.claude/conductor/tasks/<task-id>/harness.md` (or `.claude/conductor/backlog-misc.md`) + one `HB-NNN` index row in `.claude/conductor/harness-backlog.md` (only if friction was hit)
-- Project test files (`tests/`, `__tests__/`, `*.spec.ts`, `*.test.tsx`)
+The complete file-output contract lives in
+`.claude/conductor/templates/task-tests-reference.md`, read in Step 4.

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-export type EventTopic = 'tasks' | 'project-files' | 'skills';
+export type EventTopic = 'tasks' | 'project-files' | 'skills' | 'docs';
 
 interface SubscriberMap {
   [topic: string]: Set<() => void>;
@@ -36,6 +36,7 @@ function ensureSource() {
   wire('tasks');
   wire('project-files');
   wire('skills');
+  wire('docs');
 
   source.onerror = () => {
     // EventSource auto-reconnects; nothing to do. If browser permanently
@@ -58,6 +59,7 @@ export function useEventSubscribe(topics: EventTopic[], onChange: () => void): v
   const cbRef = useRef(onChange);
   cbRef.current = onChange;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: topics.join('|') below is deliberate — a stable primitive key so a caller passing a new array literal each render doesn't force a resubscribe; the effect body still closes over the live `topics` array for iteration.
   useEffect(() => {
     ensureSource();
     const wrapper = () => cbRef.current();
@@ -71,7 +73,6 @@ export function useEventSubscribe(topics: EventTopic[], onChange: () => void): v
         if (subscribers[t]?.size === 0) delete subscribers[t];
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topics.join('|')]);
 }
 

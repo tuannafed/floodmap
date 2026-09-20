@@ -2,7 +2,7 @@
 paths:
   - "**/tests.md"
 ---
-# Rule: Test Discipline — what every `tests.md` must carry, and the runtime smoke gate
+# Rule: Test Discipline — what every `tests.md` must carry, and the system-test gate
 
 Auto-loads when the tester reads `tests.md` before appending (re-runs) and for the reviewer. On the **first run `tests.md` does not exist yet — the tester `Read`s this file itself**. Mock-boundary rules and runner gotchas for the test files themselves are `test-tiers.md` (auto-loads on any `*.test.*`). Status, HB, claims: `harness-contract.md`.
 
@@ -14,21 +14,21 @@ Auto-loads when the tester reads `tests.md` before appending (re-runs) and for t
 | `risky` | red first (failing tests for every phase before the coder), then green |
 
 ## 2. What `tests.md` must contain
-Test mode · `Rules read:` · `Skills loaded via Skill tool:` (only those invoked) · tests written (files) · **Mock boundary** — what was mocked and what was real; a whole-module mock of the module under test means it was not tested · **Command + result** — the exact command line and counts copied from its output (a count with no command is a claim without evidence) · coverage · source fixes made by the tester · skipped tests with reason · `## Runtime smoke` (§5) when it ran.
+Test mode · `Rules read:` · `Skills loaded via Skill tool:` (only those invoked) · tests written (files) · **Mock boundary** — what was mocked and what was real; a whole-module mock of the module under test means it was not tested · **Command + result** — the exact command line and counts copied from its output (a count with no command is a claim without evidence) · coverage · source fixes made by the tester · skipped tests with reason · `## System test (Tier-3)` (§5) when it ran.
 
 ## 3. Artifact gate
 `tests.md` is on disk and non-empty **before** any count is reported. Reply text is discarded.
 
 ## 4. Test matrix — the split, single copy
-- `tasks/<id>/test-matrix.md` — behavior-level detail for this task, **one row per `test_scenario`** (not per test case; a scenario with 20 cases is one row). Create it from `conductor/task-test-matrix.md` if missing. Columns `Unit` / `Integration` / `E2E` = `yes` only for layers that ran and passed this round; `Status` = `implemented` (green) or `in_progress` (red phase); `Last validated` = today; `Evidence` = test file path(s). Skipped behaviors still get a row with the reason in `Evidence`.
+- `tasks/<id>/test-matrix.md` — behavior-level detail for this task, **one row per `test_scenario`** (not per test case; a scenario with 20 cases is one row). Create it from `conductor/templates/task-test-matrix.md` if missing — but re-`Read` the path immediately before creating it, not only at session start: a concurrently-running reviewer or coder can create it first, and a bare `Write` at that point silently replaces their content with no git history to recover it if it was never committed (confirmed live, HB-020 — a tester's `Write` destroyed a reviewer's table created moments earlier in the same window). If it now exists, `Edit`/append instead. Columns `Unit` / `Integration` / `E2E` = `yes` only for layers that ran and passed this round; `Status` = `implemented` (green) or `in_progress` (red phase); `Last validated` = today; `Evidence` = test file path(s). Skipped behaviors still get a row with the reason in `Evidence`.
 - `conductor/test-matrix.md` — the project-wide **index**: update only this task's one row (`Behaviors` count, lowest `Status` across the task, latest `Last validated`, `Detail` link). **Never add behavior-level rows** to the index — it grows one line per task and must stay that way.
 - The reviewer advances `Status` to `implemented` on approval and syncs the index row.
 
 ## Tier-2 limits a mock cannot see
 A mock has no bind-parameter ceiling, no `CHECK` constraint, no unique index, no concurrency and no existing data. Bulk INSERT at the real batch size, an enum widened without its DB `CHECK`, uniqueness under two concurrent writers, a value-rewriting migration — each needs a real-database test; the exact checks are `test-tiers.md` #9–#12. When you find a new runtime behaviour a mock cannot represent, add it to `test-tiers.md`, not only to this task.
 
-## 5. Runtime smoke — lanes `standard` / `risky` with a runtime surface, LOCAL ONLY
-After the green run, if the task touches an HTTP route, DB schema, worker / edge code, env config or a response schema: run this checklist against **local** services only and record pass/fail per item under `## Runtime smoke` in `tests.md`. A failure is a BLOCKER — fix, add a contract test that loads the real app chain (mock only persistence), re-run. Load `Skill({skill: "runtime-smoke-test"})` for the bug-class library that says what each step is looking for.
+## 5. System test (Tier-3, runs LAST after Tier-1/2 + E2E — `test-tiers.md` § Tier 3) — lanes `standard` / `risky` with a runtime surface, LOCAL ONLY
+If the task touches an HTTP route, DB schema, worker / edge code, env config or a response schema: run this checklist against **local** services only and record pass/fail per item under `## System test (Tier-3)` in `tests.md`. A failure is a BLOCKER — fix, add a contract test that loads the real app chain (mock only persistence), re-run. Load `Skill({skill: "runtime-smoke-test"})` for the bug-class library that says what each step is looking for.
 
 - ❌ Never reset / wipe / truncate a **shared** database, restart a shared service, or point a test domain at a shared environment. Read-only post-deploy checks are in the skill.
 

@@ -70,9 +70,18 @@
   --radius: 0.5rem;
   --background: oklch(0.99 0.004 70);
   --foreground: oklch(0.22 0.012 50);
-  --card: oklch(1 0 0);
+  /* Hue is `none`, not `0` — chroma is 0 here so hue is powerless/meaningless,
+     but writing a literal `0` makes Chromium's color-mix() treat it as a real
+     hue and interpolate toward it, dragging every color-mix(..., var(--card))
+     tint (skill icon tiles, .brand-tile) hue-shifted ~90-260° off the source
+     color — e.g. every accent color read as pink/red regardless of hue.
+     `none` correctly marks it powerless so color-mix() carries the *other*
+     color's hue through untouched. Confirmed live: oklch(1 0 0) mixed with
+     #3b82f6 renders hue 338° (magenta); oklch(1 0 none) renders 260° (blue),
+     matching literal `white`. */
+  --card: oklch(1 0 none);
   --card-foreground: oklch(0.22 0.012 50);
-  --popover: oklch(1 0 0);
+  --popover: oklch(1 0 none);
   --popover-foreground: oklch(0.22 0.012 50);
   --primary: oklch(0.62 0.14 45);
   --primary-foreground: oklch(0.99 0.004 70);
@@ -83,8 +92,8 @@
   --accent: oklch(0.94 0.03 55);
   --accent-foreground: oklch(0.3 0.05 45);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.9 0.01 60);
-  --input: oklch(0.9 0.01 60);
+  --border: oklch(0.87 0.012 60);
+  --input: oklch(0.83 0.014 60);
   --ring: oklch(0.62 0.14 45);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
@@ -97,7 +106,7 @@
   --sidebar-primary-foreground: oklch(0.99 0.004 70);
   --sidebar-accent: oklch(0.94 0.02 55);
   --sidebar-accent-foreground: oklch(0.3 0.05 45);
-  --sidebar-border: oklch(0.9 0.01 60);
+  --sidebar-border: oklch(0.87 0.012 60);
   --sidebar-ring: oklch(0.62 0.14 45);
 }
 
@@ -228,11 +237,28 @@
 }
 
 /*
-  Card gradient border — orange arc at top-left corner via padding-box/border-box
-  background-clip technique. ::after adds soft inner corner glow.
+  Card border — dark mode gets the orange gradient-arc glow (looks premium
+  against a charcoal card); light mode gets a plain crisp border instead,
+  since the same glow reads as a smudged orange outline on a white card.
+  ::after adds the dark-mode-only inner corner glow.
 */
 .card-border-glow {
   position: relative;
+  border: 1px solid var(--border);
+  background-color: var(--card);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+}
+
+.card-border-glow::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.dark .card-border-glow {
   border: 1px solid transparent;
   background-image:
     linear-gradient(var(--card), var(--card)),
@@ -248,18 +274,43 @@
     color-mix(in oklch, var(--primary) 6%, transparent);
 }
 
-.card-border-glow::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  z-index: 0;
+.dark .card-border-glow::after {
   background: radial-gradient(
     ellipse 180px 130px at 0% 0%,
     color-mix(in oklch, var(--primary) 12%, transparent) 0%,
     transparent 70%
   );
+}
+
+/*
+  Task card border — same dark-glow / light-plain split as .card-border-glow,
+  as a class instead of inline style (task-card.tsx sets its own border color
+  per-lane, so it can't share the .card-border-glow background-clip trick).
+*/
+.task-card-border {
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+}
+.dark .task-card-border {
+  border: 1px solid color-mix(in oklch, var(--primary) 22%, transparent);
+  box-shadow: 0 0 16px -8px color-mix(in oklch, var(--primary) 30%, transparent);
+}
+
+/*
+  Brand tile — the sidebar logo mark. Dark mode keeps the near-black tile with
+  an orange glow ring (the reference look); light mode swaps to a soft
+  primary-tinted tile instead of dropping a near-black square onto an
+  off-white sidebar.
+*/
+.brand-tile {
+  background: color-mix(in oklch, var(--primary) 12%, var(--card));
+  border: 1px solid color-mix(in oklch, var(--primary) 28%, transparent);
+  box-shadow: 0 0 14px -6px color-mix(in oklch, var(--primary) 35%, transparent);
+}
+.dark .brand-tile {
+  background: oklch(0.18 0.01 48);
+  border-color: color-mix(in oklch, var(--primary) 30%, transparent);
+  box-shadow: 0 0 18px -4px color-mix(in oklch, var(--primary) 55%, transparent);
 }
 
 /* Dialog uses fixed positioning — card-border-glow's `position: relative` must not override it */

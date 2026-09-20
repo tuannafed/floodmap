@@ -5,6 +5,7 @@
 #   bash .claude/scripts/caw-status.sh <task-id>    # one task in detail
 #   bash .claude/scripts/caw-status.sh --all        # list incl. every done/closed task
 #   bash .claude/scripts/caw-status.sh --group v2.3 # rollup of every task whose id contains "v2.3"
+#   bash .claude/scripts/caw-status.sh --rounds <task-id>  # per-stage round counts from leader.md
 #
 # Reads only top-level keys + the phases list with awk. Trailing `# comments`
 # on a value are stripped. Runs from anywhere inside the project.
@@ -22,17 +23,19 @@ ROOT="$(find_root || true)"
 [[ -z "$ROOT" ]] && { echo "caw-status: no .claude/conductor/tasks/ found above $(pwd)"; exit 1; }
 TASKS="$ROOT/.claude/conductor/tasks"
 
-SHOW_ALL=false; TASK=""; GROUP=""; want_group=false
+SHOW_ALL=false; TASK=""; GROUP=""; want_group=false; ROUNDS=false
 for a in "$@"; do
   if $want_group; then GROUP="$a"; want_group=false; continue; fi
   case "$a" in
     --all) SHOW_ALL=true ;;
     --group) want_group=true ;;
-    -*) echo "usage: caw-status.sh [<task-id>] [--all] [--group <id-substring>]"; exit 1 ;;
+    --rounds) ROUNDS=true ;;
+    -*) echo "usage: caw-status.sh [<task-id>] [--all] [--group <id-substring>] [--rounds <task-id>]"; exit 1 ;;
     *) TASK="$a" ;;
   esac
 done
 $want_group && { echo "usage: caw-status.sh --group <id-substring>"; exit 1; }
+$ROUNDS && [[ -z "$TASK" ]] && { echo "usage: caw-status.sh --rounds <task-id>"; exit 1; }
 
 # top-level scalar: key -> value with trailing comment stripped
 top() { awk -v k="$2" '
@@ -40,9 +43,15 @@ top() { awk -v k="$2" '
 
 next_cmd() {  # $1 = id, $2 = status, $3 = next_phase
   case "$2" in
+    # `planned`/`verified` are not in the documented status enum (agents/planner.md § Field
+    # rules) and no current agent/command writes them — grepped clean across agents/, commands/,
+    # rules/, conductor/, templates/ on 2026-09-14. Kept as display-only aliases (never removed)
+    # in case an older project's overview.yaml predates the current enum: this script is
+    # read-only and copied verbatim by `caw upgrade`, so silently dropping them would misreport
+    # an existing task's state on any project still carrying one, with no warning.
     planned|plan-done)            echo "/caw-code $1 --all" ;;
     coding)                       [[ -n "$3" && "$3" != "none" ]] && echo "/caw-code $1 $3" || echo "/caw-code $1 --all" ;;
-    code-done|red-done)           echo "/caw-verify $1" ;;
+    code-done|red-done)           echo "/caw-run $1" ;;
     tests-done|tests-skipped)     echo "/caw-review $1" ;;
     review-blocked|needs-rework)  [[ -n "$3" && "$3" != "none" ]] && echo "/caw-code $1 $3" || echo "/caw-code $1 review-fixes" ;;
     review-done|verified)         echo "git commit" ;;
@@ -60,6 +69,20 @@ if [[ -n "$TASK" ]]; then
     m=$(ls "$TASKS" | grep -F -- "$TASK" | head -5 || true)
     if [[ $(echo "$m" | grep -c .) -eq 1 ]]; then DIR="$TASKS/$m"; TASK="$m"
     else echo "No task '$TASK'."; [[ -n "$m" ]] && { echo "Did you mean:"; echo "$m" | sed 's/^/  /'; }; exit 1; fi
+  fi
+  if $ROUNDS; then
+    LD="$DIR/leader.md"
+    [[ -f "$LD" ]] || { echo "$TASK: no leader.md (only /caw-run tasks have one)"; exit 1; }
+    echo "Rounds: $TASK"
+    n=0
+    while IFS= read -r line; do
+      if [[ "$line" =~ ^##\ Stage\ ([0-9]+)\ —\ ([a-z]+)\ \(([0-9]+)\) ]]; then
+        printf "  Stage %-2s %-8s %s round(s)\n" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}"
+        n=$((n+1))
+      fi
+    done < "$LD"
+    [[ $n -eq 0 ]] && echo "  (no '## Stage N — <name> (<count>)' headings found in leader.md)"
+    exit 0
   fi
   OV="$DIR/overview.yaml"
   [[ -f "$OV" ]] || { echo "$TASK: no overview.yaml"; exit 1; }
@@ -105,7 +128,28 @@ rows=$(awk '
   /^updated:/    { up=substr(val($0),1,10) }
   END { if (id!="") printf "%s\t%s\t%s\t%s\t%s\n", id, up, ln, st, np }
 ' "$TASKS"/*/overview.yaml)
-is_fin='$4=="done" || $4=="closed" || $4=="verified" || $4=="deferred"'
+# Terminal-status set comes from .claude/task-status-registry.json (single source of
+# truth shared with check-overview.py's TERMINAL_STATUS and the viewer's status.ts) —
+# falls back to the documented core (done/closed/deferred) if a project hasn't run
+# `caw upgrade` yet and has no registry file. `verified` is intentionally NOT terminal
+# here (it's an alias of `review-done`, which itself requires a human `git commit` to
+# become `done` — matching check-overview.py, which never treated `verified` as terminal).
+TERMINAL_STATUSES="$(python3 -c "
+import json, os
+path = '$ROOT/.claude/task-status-registry.json'
+if os.path.isfile(path):
+    with open(path) as f:
+        reg = json.load(f)
+    names = [s['name'] for s in reg['statuses'] if s.get('terminal')]
+else:
+    names = ['done', 'closed', 'deferred']
+print(' '.join(names))
+")"
+is_fin=""
+for st in $TERMINAL_STATUSES; do
+  is_fin="${is_fin}\$4==\"$st\" || "
+done
+is_fin="${is_fin% || }"
 
 # ── Group rollup: every task whose id contains the substring, no 8-row cap ────
 # Groups by whatever the project's id convention already encodes (a release

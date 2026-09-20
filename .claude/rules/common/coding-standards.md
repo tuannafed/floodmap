@@ -48,7 +48,7 @@ function addRole(user: User, role: string): User {
 ## File Size
 
 | Guideline | Limit |
-|-----------|-------|
+|---|---|
 | Typical file | 200–400 lines |
 | Maximum before extraction | 800 lines |
 | Single function | 50 lines max |
@@ -60,15 +60,17 @@ When a file exceeds 600 lines, extract utilities before adding more code.
 
 ## Naming
 
+Match your language's own casing convention, consistently within the file:
+
 ```
-Variables / functions : camelCase
-Classes / types        : PascalCase
-Constants              : SCREAMING_SNAKE_CASE
-Files                  : kebab-case
-Boolean names          : isX / hasX / canX / shouldX
-Event handlers         : handleX (not onX in implementation)
+JS/TS/Java        : camelCase vars/functions, PascalCase classes/types
+Python/Rust/Ruby  : snake_case vars/functions, PascalCase classes/types
+Go                : camelCase unexported, PascalCase exported
+Constants         : SCREAMING_SNAKE_CASE (all languages)
+Boolean names     : isX/hasX/canX/shouldX (or snake_case equivalent)
 ```
 
+Files: kebab-case (JS/TS), snake_case (Python/Rust/Ruby), else per ecosystem default.
 No abbreviations except well-known ones: `id`, `url`, `dto`, `ctx`, `req`, `res`, `err`.
 
 ---
@@ -76,17 +78,8 @@ No abbreviations except well-known ones: `id`, `url`, `dto`, `ctx`, `req`, `res`
 ## Error Handling
 
 ```typescript
-// ❌ WRONG — silent swallow
-try {
-  await riskyOp();
-} catch (_e) {}
-
-// ❌ WRONG — generic re-throw with no context
-try {
-  await riskyOp();
-} catch (e) {
-  throw e;
-}
+// ❌ WRONG — silent swallow: catch (_e) {}
+// ❌ WRONG — bare re-throw with no context: catch (e) { throw e }
 
 // ✅ CORRECT — wrap with context, let caller decide
 try {
@@ -109,7 +102,7 @@ Never `console.error`/`console.log` in library/service code — log at the bound
 Validate at system boundaries only — not inside service functions:
 
 | Boundary | What to validate |
-|----------|-----------------|
+|---|---|
 | HTTP controllers | DTOs via class-validator or Zod schema |
 | Queue consumers | Incoming message payload |
 | Cron jobs | External data fetched from APIs |
@@ -143,7 +136,7 @@ primitive across apps — fixing the sites you found is not the deliverable. The
    see [`templates/static-gates/README.md`](../../templates/static-gates/README.md).
 2. A **`pipeline-postmortems.md` entry** if the defect reached a deployed environment.
 
-Hand-enumerating call sites under-counts (three passes to find 18, once). The gate is the count.
+Hand-enumerating call sites under-counts. The gate is the count.
 
 ---
 

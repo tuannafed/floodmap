@@ -95,6 +95,29 @@ documented** (a down migration, or a `-- irreversible:` first-line comment stati
 lost and why that is acceptable). Large backfills batch by primary key range and never run
 inside the same transaction as a DDL lock.
 
+## (f) Cross-task migration authorship race (same window, overlapping tables)
+
+Sections (a)-(e) assume one task authors migrations at a time. When a task's `related_tasks`
+names another task whose phases also touch a migrations directory and that task is not yet
+`done`, two tasks in the same roadmap window can each author a revision against overlapping
+tables — a different failure than anything above: two authors racing, not one author's
+ordering.
+
+1. In `overview.yaml`, the later-numbered task's migration-touching phase declares which
+   task's migration it expects to chain after, mirroring (c)'s `blocks_deploy_of:`:
+   ```yaml
+   - id: db-auth
+     status: pending
+     chains_after: task-001-backend-skeleton   # migration this phase's revision must follow
+   ```
+2. Before that phase reaches `done`, the coder runs the project's own head/drift check for
+   its migration tool and pastes the output in `code.md`: `alembic heads` (must show exactly
+   one head, not a branch) for Alembic; the tool's own drift/conflict check for Drizzle
+   (`drizzle-kit check`) or Prisma (re-running `prisma migrate dev` and confirming no
+   diverged history) otherwise. A sentence ("no conflict expected") is not evidence.
+3. A branched head found at this check is a blocker for the phase, not a note — merge the
+   branch (or coordinate with the other task's author) before continuing.
+
 ---
 
 ## Reviewer table
@@ -111,3 +134,5 @@ inside the same transaction as a DDL lock.
 | Dependent code bundled into a hotfix with unrelated changes | HIGH |
 | `DROP COLUMN` without table-level bare-select grep pasted in `code.md` | HIGH |
 | Backfill not idempotent, or irreversible without `-- irreversible:` note | MEDIUM |
+| Migration phase with a related, not-yet-`done` task also touching migrations, but no `chains_after` declared | HIGH |
+| Migration phase reached `done` with a branched head / unresolved migration conflict | CRITICAL |

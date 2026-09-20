@@ -1,9 +1,9 @@
 import { AlertCircle, Boxes, Code2, Database, Globe, Layers, Server } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import * as simpleIcons from 'simple-icons';
+import { MarkdownBody } from '@/components/markdown-body';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useEventSubscribe } from '@/hooks/use-event-stream';
-import { renderMarkdown } from '@/lib/markdown';
+import { useI18n } from '@/lib/i18n/context';
 import { fetchJson } from '@/lib/utils';
 import type { ProjectOverview, StackItem } from '@/pages/api/project-overview.json';
 
@@ -12,64 +12,11 @@ interface OverviewData {
   conventionsContent: string;
 }
 
-// One simple-icon record: title, brand hex (no '#'), and the SVG path.
-type IconRecord = { title: string; hex: string; path: string };
-
-// Index every simple-icon by a normalized title for fuzzy lookup by tech name.
-const ICON_BY_TITLE: Record<string, IconRecord> = (() => {
-  const map: Record<string, IconRecord> = {};
-  for (const value of Object.values(simpleIcons)) {
-    const icon = value as Partial<IconRecord>;
-    if (icon && typeof icon === 'object' && icon.title && icon.path && icon.hex) {
-      map[normalize(icon.title)] = icon as IconRecord;
-    }
-  }
-  return map;
-})();
-
-function normalize(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-// Tech names in conventions.md don't always match simple-icons titles 1:1.
-// Map a stack item's name → the simple-icons title to look up.
-const NAME_ALIASES: Record<string, string> = {
-  nextjs: 'nextdotjs',
-  next: 'nextdotjs',
-  socketio: 'socketdotio',
-  'socket.io': 'socketdotio',
-  postgres: 'postgresql',
-  reactquery: 'reactquery',
-  tanstackquery: 'reactquery',
-  s3: 'amazons3',
-  aws: 'amazonwebservices',
-  rn: 'react',
-  reactnative: 'react',
-  nestjs: 'nestjs',
-  tailwind: 'tailwindcss',
-  tailwindcss: 'tailwindcss',
-  radix: 'radixui',
-  radixui: 'radixui',
-};
-
-function resolveSimpleIcon(name: string): IconRecord | null {
-  const key = normalize(name);
-  // Try alias first, then the raw normalized name.
-  const aliased = NAME_ALIASES[key];
-  if (aliased && ICON_BY_TITLE[aliased]) return ICON_BY_TITLE[aliased];
-  if (ICON_BY_TITLE[key]) return ICON_BY_TITLE[key];
-  // Loose contains-match as a last resort (e.g. "expo router" → "expo").
-  for (const [title, icon] of Object.entries(ICON_BY_TITLE)) {
-    if (key.length >= 3 && (key.includes(title) || title.includes(key))) return icon;
-  }
-  return null;
-}
-
-// Brand logo for a stack tech. Falls back to a neutral lucide glyph chosen by
-// the item's role when no brand icon is found.
-function StackIcon({ name, role }: { name: string; role: string }) {
-  const icon = resolveSimpleIcon(name);
-
+// Brand logo for a stack tech. `iconSvg` is resolved server-side (icon-resolve.ts,
+// imported only by the API route — the full `simple-icons` package never ships to the
+// client bundle) — this component just renders whatever it was given, falling back to a
+// neutral lucide glyph chosen by the item's role when the server found no brand icon.
+function StackIcon({ iconSvg: icon, role }: { iconSvg: StackItem['iconSvg']; role: string }) {
   if (icon) {
     // simple-icons hex omits the leading '#'; near-black logos need a tinted bg.
     const isDark = ['000000', '010101', '161618', '1c2024', '2d3748'].includes(
@@ -84,7 +31,7 @@ function StackIcon({ name, role }: { name: string; role: string }) {
           role="img"
           aria-label={icon.title}
           viewBox="0 0 24 24"
-          className="w-[18px] h-[18px]"
+          className="w-4.5 h-4.5"
           fill={isDark ? '#ffffff' : `#${icon.hex}`}
         >
           <path d={icon.path} />
@@ -114,9 +61,9 @@ function roleFallbackIcon(role: string): typeof Code2 {
 function StackCard({ item }: { item: StackItem }) {
   return (
     <div className="flex flex-col items-center gap-2 p-3 rounded-xl bg-muted/30 border border-border/40 hover:border-border/70 transition-colors min-w-0">
-      <StackIcon name={item.name} role={item.role} />
+      <StackIcon iconSvg={item.iconSvg} role={item.role} />
       <div className="text-center min-w-0 w-full">
-        <p className="text-[12px] font-semibold text-foreground truncate">
+        <p className="text-xs font-semibold text-foreground truncate">
           {item.name}
           {item.version ? ` ${item.version}` : ''}
         </p>
@@ -155,6 +102,7 @@ const TAG_COLORS = [
 ];
 
 export function OverviewTab() {
+  const { s } = useI18n();
   const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -197,7 +145,7 @@ export function OverviewTab() {
     return (
       <div className="flex items-center gap-2 text-muted-foreground text-sm italic py-12 justify-center">
         <AlertCircle className="size-4" />
-        <span>Could not load project overview.</span>
+        <span>{s.overview.couldNotLoad}</span>
       </div>
     );
   }
@@ -240,10 +188,10 @@ export function OverviewTab() {
       {/* Meta grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: 'Team', value: overview.team },
-          { label: 'Archetype', value: overview.archetype || '—' },
-          { label: 'Generated', value: overview.generatedAt || '—' },
-          { label: 'Last Updated', value: overview.lastUpdated || '—' },
+          { label: s.overview.meta.team, value: overview.team },
+          { label: s.overview.meta.archetype, value: overview.archetype || '—' },
+          { label: s.overview.meta.generated, value: overview.generatedAt || '—' },
+          { label: s.overview.meta.lastUpdated, value: overview.lastUpdated || '—' },
         ].map(({ label, value }) => (
           <div
             key={label}
@@ -252,7 +200,7 @@ export function OverviewTab() {
             <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
               {label}
             </p>
-            <p className="text-[14px] font-semibold text-foreground leading-snug wrap-break-word">
+            <p className="text-sm font-semibold text-foreground leading-snug wrap-break-word">
               {value}
             </p>
           </div>
@@ -263,7 +211,7 @@ export function OverviewTab() {
       {overview.stack.length > 0 && (
         <div className="space-y-2.5">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-            Stack Summary
+            {s.overview.stackSummary}
           </p>
           <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2.5">
             {overview.stack.map((item) => (
@@ -283,13 +231,9 @@ export function OverviewTab() {
           return (
             <div className="space-y-2.5 pt-2 border-t border-border/60">
               <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground pt-2">
-                Conventions
+                {s.overview.conventions}
               </p>
-              <div
-                className="prose-task max-w-none"
-                // eslint-disable-next-line react/no-danger
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(body) }}
-              />
+              <MarkdownBody content={body} filenameBase="conventions" title="conventions.md" />
             </div>
           );
         })()}

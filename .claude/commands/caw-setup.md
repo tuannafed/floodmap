@@ -1,4 +1,5 @@
 ---
+description: Detect stack, install skills, generate conventions.md (first-time setup, --refresh, or --add <skill>)
 model: sonnet
 ---
 

@@ -134,6 +134,10 @@ A CRITICAL/HIGH defect that reached a deployed environment (or was one skipped c
   and what stops the next one.
 - When the same class is fixed at two or more sites, ship a static gate for the class (a CI grep
   or lint), not a longer comment.
+- If the generalized rule belongs in a hub-owned file (`agents/*.md`, `rules/common/*.md`,
+  `commands/*.md`, `templates/skills/*`), fill the entry's `Hub target` field in
+  `pipeline-postmortems.md` — otherwise this, the harness's own most severe class of failure, never
+  reaches the caw maintainer the way routine `harness-backlog.md` friction already does.
 - Generalize at the rule that already owns the principle. Example: "no writer, no reader" concluded
   from grepping a column name, when the ORM's bare select expands to an explicit column list, is
   §B's blind spot — generalise at the rule that owns the principle.

@@ -47,6 +47,16 @@ function writeStderr(stderr) {
   process.stderr.write(stderr.endsWith('\n') ? stderr : `${stderr}\n`);
 }
 
+// A UserPromptSubmit hook's stdout is appended to Claude's context. Every
+// pass-through path below echoes the raw hook input to stdout so that a
+// PreToolUse/PostToolUse hook stays a no-op; for UserPromptSubmit that would
+// paste the whole payload JSON into the conversation on every prompt. Echo
+// nothing for that event instead.
+function passthrough(raw) {
+  if (/"hook_event_name"\s*:\s*"UserPromptSubmit"/.test(raw)) return '';
+  return raw;
+}
+
 function emitHookResult(raw, output) {
   if (typeof output === 'string' || Buffer.isBuffer(output)) {
     process.stdout.write(String(output));
@@ -59,13 +69,13 @@ function emitHookResult(raw, output) {
     if (Object.prototype.hasOwnProperty.call(output, 'stdout')) {
       process.stdout.write(String(output.stdout ?? ''));
     } else if (!Number.isInteger(output.exitCode) || output.exitCode === 0) {
-      process.stdout.write(raw);
+      process.stdout.write(passthrough(raw));
     }
 
     return Number.isInteger(output.exitCode) ? output.exitCode : 0;
   }
 
-  process.stdout.write(raw);
+  process.stdout.write(passthrough(raw));
   return 0;
 }
 
@@ -77,7 +87,7 @@ function writeLegacySpawnOutput(raw, result) {
   }
 
   if (Number.isInteger(result.status) && result.status === 0) {
-    process.stdout.write(raw);
+    process.stdout.write(passthrough(raw));
   }
 }
 
@@ -94,12 +104,12 @@ async function main() {
   const { raw, truncated } = await readStdinRaw();
 
   if (!hookId || !relScriptPath) {
-    process.stdout.write(raw);
+    process.stdout.write(passthrough(raw));
     process.exit(0);
   }
 
   if (!isHookEnabled(hookId, { profiles: profilesCsv })) {
-    process.stdout.write(raw);
+    process.stdout.write(passthrough(raw));
     process.exit(0);
   }
 
@@ -110,13 +120,13 @@ async function main() {
   // Prevent path traversal outside the plugin root
   if (!scriptPath.startsWith(resolvedRoot + path.sep)) {
     process.stderr.write(`[Hook] Path traversal rejected for ${hookId}: ${scriptPath}\n`);
-    process.stdout.write(raw);
+    process.stdout.write(passthrough(raw));
     process.exit(0);
   }
 
   if (!fs.existsSync(scriptPath)) {
     process.stderr.write(`[Hook] Script not found for ${hookId}: ${scriptPath}\n`);
-    process.stdout.write(raw);
+    process.stdout.write(passthrough(raw));
     process.exit(0);
   }
 
@@ -141,7 +151,7 @@ async function main() {
       process.exit(emitHookResult(raw, output));
     } catch (runErr) {
       process.stderr.write(`[Hook] run() error for ${hookId}: ${runErr.message}\n`);
-      process.stdout.write(raw);
+      process.stdout.write(passthrough(raw));
     }
     process.exit(0);
   }

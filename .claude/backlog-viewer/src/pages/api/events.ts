@@ -1,6 +1,7 @@
 import { type FSWatcher, watch } from 'node:fs';
 import { join } from 'node:path';
 import type { APIRoute } from 'astro';
+import { readCawConfig } from '@/lib/caw-config';
 import { IS_STATIC } from '@/lib/deploy-target';
 import { getProjectRoot } from '@/lib/project-root';
 
@@ -11,7 +12,7 @@ export const prerender = IS_STATIC;
 
 // Topics surface as event names on the client. Each watched path falls under
 // exactly one topic; the client decides what to refetch when each fires.
-type Topic = 'tasks' | 'project-files' | 'skills';
+type Topic = 'tasks' | 'project-files' | 'skills' | 'docs';
 
 interface WatchSpec {
   path: string; // relative to projectRoot
@@ -45,6 +46,14 @@ export const GET: APIRoute = async () => {
   }
   const root = getProjectRoot();
   const encoder = new TextEncoder();
+  // docPaths is user-configured (.claude/caw.config.json), so these watch
+  // specs can't live in the static WATCH_SPECS list above — read once per
+  // connection and watch each configured folder under the 'docs' topic.
+  const { docPaths } = await readCawConfig(root);
+  const specs: WatchSpec[] = [
+    ...WATCH_SPECS,
+    ...docPaths.map((path): WatchSpec => ({ path, topic: 'docs', recursive: true })),
+  ];
 
   // Per-topic debounce timers + watchers — collected so we can clean up on close.
   const watchers: FSWatcher[] = [];
@@ -79,7 +88,7 @@ export const GET: APIRoute = async () => {
       // Initial hello — lets the client confirm the channel is alive.
       send('hello', { root, ts: Date.now() });
 
-      for (const spec of WATCH_SPECS) {
+      for (const spec of specs) {
         const abs = join(root, spec.path);
         try {
           const w = watch(abs, { recursive: !!spec.recursive, persistent: false }, () =>

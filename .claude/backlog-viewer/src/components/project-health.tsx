@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useEventSubscribe } from '@/hooks/use-event-stream';
+import { useI18n } from '@/lib/i18n/context';
 import { ALL_DOMAINS, DOMAINS, inferDomain } from '@/lib/skill-domain';
 import { fetchJson } from '@/lib/utils';
 
@@ -65,14 +66,14 @@ function DomainBar({
   const pct = max > 0 ? Math.round((count / max) * 100) : 0;
   return (
     <div className="flex items-center gap-3">
-      <span className="text-[12px] text-muted-foreground w-[88px] shrink-0 truncate">{label}</span>
+      <span className="text-xs text-muted-foreground w-22 shrink-0 truncate">{label}</span>
       <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{ width: `${pct}%`, backgroundColor: color }}
         />
       </div>
-      <span className="text-[12px] font-semibold tabular-nums w-5 text-right" style={{ color }}>
+      <span className="text-xs font-semibold tabular-nums w-5 text-right" style={{ color }}>
         {count}
       </span>
     </div>
@@ -80,6 +81,7 @@ function DomainBar({
 }
 
 export function ProjectHealth() {
+  const { s, domain } = useI18n();
   const [skills, setSkills] = useState<SkillSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -95,7 +97,7 @@ export function ProjectHealth() {
   }, [load]);
   useEventSubscribe(['skills'], load);
 
-  const { groups, coveragePct, topDomain, totalSkills } = useMemo(() => {
+  const { groups, coveragePct, topDomainKey, topDomain, totalSkills } = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const s of skills) {
       const d = inferDomain(s).key;
@@ -113,11 +115,12 @@ export function ProjectHealth() {
 
     const covered = groups.length;
     const coveragePct = Math.round((covered / ALL_DOMAINS.length) * 100);
+    const topDomainKey = groups[0]?.key ?? null;
     const topDomain = groups[0]?.label ?? '—';
     const totalSkills = skills.length;
     const maxCount = groups[0]?.count ?? 1;
 
-    return { groups, coveragePct, topDomain, totalSkills, maxCount };
+    return { groups, coveragePct, topDomainKey, topDomain, totalSkills, maxCount };
   }, [skills]);
 
   const maxCount = groups[0]?.count ?? 1;
@@ -129,16 +132,18 @@ export function ProjectHealth() {
         <div className="flex items-center gap-2">
           <span className="text-primary text-base">✦</span>
           <span className="text-xs font-semibold uppercase tracking-widest text-foreground">
-            Skill Coverage
+            {s.health.title}
           </span>
         </div>
-        <span className="text-[11px] text-muted-foreground font-mono">{totalSkills} skills</span>
+        <span className="text-[11px] text-muted-foreground font-mono">
+          {s.health.skillsCount(totalSkills)}
+        </span>
       </div>
 
       <div className="p-4 flex flex-col gap-4 flex-1">
         {loading ? (
-          <div className="flex-1 flex items-center justify-center text-[12px] text-muted-foreground">
-            Loading…
+          <div className="flex-1 flex items-center justify-center text-xs text-muted-foreground">
+            {s.health.loading}
           </div>
         ) : (
           <>
@@ -146,36 +151,38 @@ export function ProjectHealth() {
               <DonutChart
                 pct={coveragePct}
                 color="var(--primary)"
-                label={`${groups.length}/${ALL_DOMAINS.length} domains`}
+                label={s.health.domainsLabel(groups.length, ALL_DOMAINS.length)}
               />
               <div className="flex-1 flex flex-col gap-3 min-w-0">
                 {groups.map((g) => (
                   <DomainBar
                     key={g.key}
-                    label={g.label}
+                    label={domain(g.key, g.label)}
                     count={g.count}
                     max={maxCount}
                     color={g.color}
                   />
                 ))}
                 {groups.length === 0 && (
-                  <p className="text-[12px] text-muted-foreground italic">No skills installed.</p>
+                  <p className="text-xs text-muted-foreground italic">{s.health.noSkills}</p>
                 )}
               </div>
             </div>
 
             <div className="border-t border-border/60 pt-3 mt-auto flex items-center justify-between">
               <p className="text-[11px] text-muted-foreground">
-                Top domain: <span className="font-medium text-foreground">{topDomain}</span>
+                {s.health.topDomain}{' '}
+                <span className="font-medium text-foreground">
+                  {topDomainKey ? domain(topDomainKey, topDomain) : topDomain}
+                </span>
               </p>
               <p className="text-[11px] text-muted-foreground">
                 {groups.length < ALL_DOMAINS.length ? (
                   <span className="text-primary font-medium">
-                    {ALL_DOMAINS.length - groups.length} domain
-                    {ALL_DOMAINS.length - groups.length > 1 ? 's' : ''} missing
+                    {s.health.domainsMissing(ALL_DOMAINS.length - groups.length)}
                   </span>
                 ) : (
-                  <span className="text-emerald-500 font-medium">Full coverage</span>
+                  <span className="text-emerald-500 font-medium">{s.health.fullCoverage}</span>
                 )}
               </p>
             </div>

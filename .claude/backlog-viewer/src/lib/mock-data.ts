@@ -157,9 +157,7 @@ export const MOCK_TASKS: Task[] = [
     next_phase: '',
     created: '2026-05-19T10:00:00Z',
     updated: '2026-05-21T16:00:00Z',
-    phases: [
-      { id: 'phase-1', status: 'done', files: 'src/health/health.controller.ts' },
-    ],
+    phases: [{ id: 'phase-1', status: 'done', files: 'src/health/health.controller.ts' }],
     sections: { plan: '', code: '', tests: '', review: '', overview: '' },
   },
 ];
@@ -168,14 +166,16 @@ export const MOCK_SKILLS = [
   {
     name: 'api-contract',
     folder: 'api-contract',
-    description: 'REST conventions, URL structure, HTTP methods. For BA → Backend → Frontend handoff.',
+    description:
+      'REST conventions, URL structure, HTTP methods. For BA → Backend → Frontend handoff.',
     metadata: { domain: 'engineering', version: '1.2' },
     path: '.claude/skills/api-contract/SKILL.md',
   },
   {
     name: 'error-handling-patterns',
     folder: 'error-handling-patterns',
-    description: 'CAW error envelope spec. NestJS/FastAPI exception filters with status→code mapping.',
+    description:
+      'CAW error envelope spec. NestJS/FastAPI exception filters with status→code mapping.',
     metadata: { domain: 'engineering' },
     path: '.claude/skills/error-handling-patterns/SKILL.md',
   },
@@ -196,14 +196,16 @@ export const MOCK_SKILLS = [
   {
     name: 'javascript-testing',
     folder: 'javascript-testing',
-    description: 'Testing patterns and best practices. Jest, Vitest, Playwright setup and conventions.',
+    description:
+      'Testing patterns and best practices. Jest, Vitest, Playwright setup and conventions.',
     metadata: { domain: 'quality' },
     path: '.claude/skills/javascript-testing/SKILL.md',
   },
   {
     name: 'business-analyst',
     folder: 'business-analyst',
-    description: 'Product discovery and requirements analysis. Stakeholder interviews, product specs.',
+    description:
+      'Product discovery and requirements analysis. Stakeholder interviews, product specs.',
     metadata: { domain: 'product' },
     path: '.claude/skills/business-analyst/SKILL.md',
   },
@@ -224,7 +226,8 @@ export const MOCK_SKILLS = [
   {
     name: 'nextjs-feature',
     folder: 'nextjs-feature',
-    description: 'Next.js 15 App Router feature implementation patterns with React Server Components.',
+    description:
+      'Next.js 15 App Router feature implementation patterns with React Server Components.',
     metadata: { domain: 'engineering', version: '1.0' },
     path: '.claude/skills/nextjs-feature/SKILL.md',
   },
@@ -238,21 +241,24 @@ export const MOCK_SKILLS = [
   {
     name: 'prisma-orm',
     folder: 'prisma-orm',
-    description: 'Prisma schema design, migrations, relation queries, and performance optimization.',
+    description:
+      'Prisma schema design, migrations, relation queries, and performance optimization.',
     metadata: { domain: 'engineering' },
     path: '.claude/skills/prisma-orm/SKILL.md',
   },
   {
     name: 'nestjs-patterns',
     folder: 'nestjs-patterns',
-    description: 'NestJS module architecture, dependency injection, pipes, guards and interceptors.',
+    description:
+      'NestJS module architecture, dependency injection, pipes, guards and interceptors.',
     metadata: { domain: 'engineering', version: '1.3' },
     path: '.claude/skills/nestjs-patterns/SKILL.md',
   },
   {
     name: 'security-hardening',
     folder: 'security-hardening',
-    description: 'OWASP Top 10 mitigations, input validation, rate limiting, and secret management.',
+    description:
+      'OWASP Top 10 mitigations, input validation, rate limiting, and secret management.',
     metadata: { domain: 'security' },
     path: '.claude/skills/security-hardening/SKILL.md',
   },
@@ -274,7 +280,8 @@ export const MOCK_SKILLS = [
 
 export const MOCK_OVERVIEW = {
   name: 'caw-backlog-viewer',
-  description: 'Astro + React Kanban UI for the CAW agent workflow. Displays tasks, skills, and project health.',
+  description:
+    'Astro + React Kanban UI for the CAW agent workflow. Displays tasks, skills, and project health.',
   team: 'CAW',
   archetype: 'nestjs-rest-api-monolith',
   generatedAt: '2026-05-10 09:00 UTC',
@@ -334,3 +341,27 @@ export const MOCK_PROJECT_FILES = {
     },
   ],
 };
+
+export const MOCK_DOCS: import('./doc-parser').DocSummary[] = [
+  {
+    path: 'specs/BD/260810/overview.html',
+    title: 'Basic Design — Event Ingestion Service',
+    folder: 'specs',
+    group: 'BD',
+    mtimeMs: Date.parse('2026-08-10T09:00:00Z'),
+  },
+  {
+    path: 'specs/DD/260821/queue-worker.html',
+    title: 'Detail Design — Queue Worker',
+    folder: 'specs',
+    group: 'DD',
+    mtimeMs: Date.parse('2026-08-21T09:00:00Z'),
+  },
+  {
+    path: 'docs/reports/260908/REPORT_v1.1.0.html',
+    title: 'Review Report v1.1.0',
+    folder: 'docs',
+    group: 'reports',
+    mtimeMs: Date.parse('2026-09-08T09:00:00Z'),
+  },
+];

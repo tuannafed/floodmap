@@ -1,5 +1,5 @@
-import { Kanban, LayoutGrid, Sparkles } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { FileText, Folder, Kanban, LayoutGrid, Sparkles } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Sidebar,
   SidebarContent,
@@ -11,7 +11,13 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from '@/components/ui/sidebar';
+import type { DocSummary } from '@/hooks/use-docs';
+import { useI18n } from '@/lib/i18n/context';
+import type { Dict } from '@/lib/i18n/dict';
 import { cn } from '@/lib/utils';
 
 // Claude logo — multi-ray asterisk with beveled tips, matching official mark
@@ -64,22 +70,91 @@ function ClaudeLogo({ className }: { className?: string }) {
   );
 }
 
-type View = 'dashboard' | 'board' | 'skills';
-
-const APP_VERSION = 'v2.0.0';
+type View = 'dashboard' | 'board' | 'skills' | 'docs';
 
 interface TasksSidebarProps {
   projectName: string;
   view: View;
   onViewChange: (view: View) => void;
   taskCount?: number;
+  docs?: DocSummary[];
+  selectedDoc?: string | null;
+  onSelectDoc?: (path: string) => void;
 }
 
-const menuItems: { id: View; label: string; icon: typeof LayoutGrid }[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutGrid },
-  { id: 'board', label: 'Board', icon: Kanban },
-  { id: 'skills', label: 'Skills', icon: Sparkles },
-];
+function getMenuItems(s: Dict): { id: View; label: string; icon: typeof LayoutGrid }[] {
+  return [
+    { id: 'dashboard', label: s.sidebar.nav.dashboard, icon: LayoutGrid },
+    { id: 'board', label: s.sidebar.nav.board, icon: Kanban },
+    { id: 'skills', label: s.sidebar.nav.skills, icon: Sparkles },
+    { id: 'docs', label: s.sidebar.nav.docs, icon: FileText },
+  ];
+}
+
+// Doc titles are whatever the source HTML's <title> says — often
+// "<Project Name> — <Doc Title>" (the technical-doc-html skill's own
+// convention). That prefix is redundant in a per-project sidebar and eats
+// most of the available width, so strip it for display wherever it's shared
+// by more than one doc. Majority-based, not "docs[0] vs everyone else": a
+// single unrelated doc (e.g. a generic overview whose own title happens to
+// contain " — ") must not block stripping for every other doc that does
+// share the project's lead-in. No project-name detection needed — a prefix
+// only strips because multiple docs independently agree on it.
+function stripSharedTitlePrefix(docs: DocSummary[]): Map<string, string> {
+  const display = new Map<string, string>();
+  const DASH = ' — ';
+
+  const counts = new Map<string, number>();
+  for (const d of docs) {
+    const dashIdx = d.title.indexOf(DASH);
+    if (dashIdx === -1) continue;
+    const prefix = d.title.slice(0, dashIdx + DASH.length);
+    counts.set(prefix, (counts.get(prefix) ?? 0) + 1);
+  }
+
+  let sharedPrefix: string | null = null;
+  let sharedCount = 1;
+  for (const [prefix, count] of counts) {
+    if (count > sharedCount) {
+      sharedPrefix = prefix;
+      sharedCount = count;
+    }
+  }
+
+  for (const d of docs) {
+    display.set(
+      d.path,
+      sharedPrefix && d.title.startsWith(sharedPrefix)
+        ? d.title.slice(sharedPrefix.length)
+        : d.title,
+    );
+  }
+  return display;
+}
+
+// Docs directly under a configured docPaths folder (e.g. specs/overview.html) stay a flat
+// list; docs one level deeper (specs/BD/x.html, specs/SRS/y.html) get a folder submenu
+// named after that subfolder — mirrors the project's own docs/BD, docs/SRS layout. Order
+// within each bucket is preserved (already mtime-sorted by listDocs()); groups themselves
+// sort alphabetically so the submenu doesn't reshuffle as files change.
+function groupDocs(docs: DocSummary[]): {
+  ungrouped: DocSummary[];
+  groups: [string, DocSummary[]][];
+} {
+  const ungrouped: DocSummary[] = [];
+  const byGroup = new Map<string, DocSummary[]>();
+  for (const d of docs) {
+    if (!d.group) {
+      ungrouped.push(d);
+      continue;
+    }
+    const list = byGroup.get(d.group);
+    if (list) list.push(d);
+    else byGroup.set(d.group, [d]);
+  }
+  const groups = Array.from(byGroup.entries()).sort(([a], [b]) => a.localeCompare(b));
+  return { ungrouped, groups };
+}
 
 interface WorkspaceStats {
   agents: number;
@@ -105,15 +180,42 @@ export function TasksSidebar({
   view,
   onViewChange,
   taskCount = 0,
+  docs = [],
+  selectedDoc = null,
+  onSelectDoc,
 }: TasksSidebarProps) {
+  const { s } = useI18n();
   const ws = useWorkspaceStats();
+  const docDisplayTitles = useMemo(() => stripSharedTitlePrefix(docs), [docs]);
+  const docGroups = useMemo(() => groupDocs(docs), [docs]);
+  const menuItems = useMemo(() => getMenuItems(s), [s]);
 
   const metrics = [
-    { label: 'Agents', value: ws?.agents ?? taskCount, color: 'var(--primary)' },
-    { label: 'Tasks', value: taskCount, color: 'var(--primary)' },
-    { label: 'Skills', value: ws?.skills ?? '—', color: '#a78bfa' },
-    { label: 'Commands', value: ws?.commands ?? '—', color: '#f6ad55' },
-    { label: 'Rules', value: ws?.rules ?? '—', color: '#68d391' },
+    {
+      label: s.sidebar.metrics.agents,
+      value: ws?.agents ?? taskCount,
+      color: 'var(--primary)',
+    },
+    {
+      label: s.sidebar.metrics.tasks,
+      value: taskCount,
+      color: 'var(--primary)',
+    },
+    {
+      label: s.sidebar.metrics.skills,
+      value: ws?.skills ?? '—',
+      color: '#a78bfa',
+    },
+    {
+      label: s.sidebar.metrics.commands,
+      value: ws?.commands ?? '—',
+      color: '#f6ad55',
+    },
+    {
+      label: s.sidebar.metrics.rules,
+      value: ws?.rules ?? '—',
+      color: '#68d391',
+    },
   ];
 
   return (
@@ -121,24 +223,16 @@ export function TasksSidebar({
       {/* ── Brand ─────────────────────────────── */}
       <SidebarHeader className="px-5 pt-6 pb-5">
         <div className="flex items-center gap-3.5">
-          {/* Logo: dark bg + orange asterisk glow */}
-          <div
-            className="size-12 rounded-xl bg-[oklch(0.18_0.01_48)] border border-primary/30 flex items-center justify-center shrink-0"
-            style={{
-              boxShadow: '0 0 18px -4px color-mix(in oklch, var(--primary) 55%, transparent)',
-            }}
-          >
-            <ClaudeLogo className="size-7 text-primary" />
+          {/* Logo: brand tile — near-black + glow in dark, soft primary tint in light */}
+          <div className="size-9 rounded-lg brand-tile flex items-center justify-center shrink-0">
+            <ClaudeLogo className="size-5 text-primary" />
           </div>
           <div className="min-w-0">
-            <div className="text-2xl font-bold leading-none tracking-tight">Claude</div>
-            <div className="flex items-center gap-2 mt-1.5">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Agent Workflow
-              </span>
-              <span className="text-[9px] font-semibold rounded border border-primary/40 px-1.5 py-px text-primary">
-                {APP_VERSION}
-              </span>
+            <div
+              className="text-base font-bold leading-tight tracking-tight truncate"
+              title={projectName || s.sidebar.projectFallback}
+            >
+              {projectName || s.sidebar.projectFallback}
             </div>
           </div>
         </div>
@@ -148,28 +242,79 @@ export function TasksSidebar({
         {/* ── Navigation ───────────────────────── */}
         <SidebarGroup className="p-0">
           <SidebarGroupLabel className="px-2 mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-primary/80">
-            Navigation
+            {s.sidebar.navGroup}
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu className="space-y-0.5">
+            <SidebarMenu>
               {menuItems.map((item) => {
                 const isActive = item.id === view;
+                const showDocsSub = item.id === 'docs' && isActive && docs.length > 0;
                 return (
                   <SidebarMenuItem key={item.id}>
                     <SidebarMenuButton
                       onClick={() => onViewChange(item.id)}
                       className={cn(
-                        'h-11 px-4 rounded-lg transition-all text-base',
+                        'h-9 px-3 rounded-base transition-all text-sm cursor-pointer',
                         isActive
                           ? 'bg-card text-foreground border border-primary/60 shadow-[0_0_12px_-4px_color-mix(in_oklch,var(--primary)_40%,transparent)]'
                           : 'text-muted-foreground hover:text-foreground hover:bg-sidebar-accent/50 border border-transparent',
                       )}
                     >
                       <item.icon
-                        className={cn('size-5 shrink-0', isActive ? 'text-primary' : '')}
+                        className={cn('size-3 shrink-0', isActive ? 'text-primary' : '')}
                       />
                       <span>{item.label}</span>
                     </SidebarMenuButton>
+                    {showDocsSub && (
+                      <SidebarMenuSub className="mt-2 mx-4.5 pr-0 pl-2">
+                        {docGroups.ungrouped.map((d) => (
+                          <SidebarMenuSubItem key={d.path}>
+                            <SidebarMenuSubButton
+                              size="sm"
+                              href="#"
+                              title={d.title}
+                              isActive={d.path === selectedDoc}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                onSelectDoc?.(d.path);
+                              }}
+                            >
+                              <span className="truncate">
+                                {docDisplayTitles.get(d.path) ?? d.title}
+                              </span>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                        {docGroups.groups.map(([groupName, groupDocsList]) => (
+                          <SidebarMenuSubItem key={groupName}>
+                            <div className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground/70">
+                              <Folder className="size-3.5 shrink-0" />
+                              <span className="truncate">{groupName}</span>
+                            </div>
+                            <SidebarMenuSub className="mr-0 pr-0">
+                              {groupDocsList.map((d) => (
+                                <SidebarMenuSubItem key={d.path}>
+                                  <SidebarMenuSubButton
+                                    size="sm"
+                                    href="#"
+                                    title={d.title}
+                                    isActive={d.path === selectedDoc}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      onSelectDoc?.(d.path);
+                                    }}
+                                  >
+                                    <span className="truncate text-[13px]">
+                                      {docDisplayTitles.get(d.path) ?? d.title}
+                                    </span>
+                                  </SidebarMenuSubButton>
+                                </SidebarMenuSubItem>
+                              ))}
+                            </SidebarMenuSub>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    )}
                   </SidebarMenuItem>
                 );
               })}
@@ -182,29 +327,29 @@ export function TasksSidebar({
 
         {/* ── System Status ────────────────────── */}
         <SidebarGroup className="p-0 mb-3">
-          <SidebarGroupLabel className="px-2 mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
-            System Status
+          <SidebarGroupLabel className="px-2 mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+            {s.sidebar.systemStatus}
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            <div className="rounded-xl border border-sidebar-border bg-sidebar/60 overflow-hidden">
+            <div className="rounded-lg border border-sidebar-border bg-sidebar/60 overflow-hidden">
               {metrics.map((m, i) => (
                 <div
                   key={m.label}
                   className={cn(
-                    'flex items-center px-3 py-[9px]',
+                    'flex items-center px-3 py-2',
                     i < metrics.length - 1 && 'border-b border-sidebar-border/40',
                   )}
                 >
-                  <span className="text-[12px] text-muted-foreground flex-1">{m.label}</span>
+                  <span className="text-[11px] text-muted-foreground flex-1">{m.label}</span>
                   <div className="flex items-center gap-1.5">
                     <span
-                      className="text-[13px] font-semibold tabular-nums"
+                      className="text-[11px] font-semibold tabular-nums"
                       style={{ color: m.color }}
                     >
                       {m.value}
                     </span>
                     <span
-                      className="size-2 rounded-full animate-pulse"
+                      className="size-1.5 rounded-full animate-pulse"
                       style={{ backgroundColor: m.color }}
                     />
                   </div>
@@ -270,13 +415,10 @@ export function TasksSidebar({
             </svg>
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-[14px] font-semibold leading-tight">Operator</div>
-            <div className="text-[11px] text-muted-foreground truncate mt-0.5">
-              {projectName || 'Project'}
-            </div>
+            <div className="text-sm font-semibold leading-tight">{s.sidebar.operator}</div>
             <div className="flex items-center gap-1 mt-0.5">
               <span className="size-1.5 rounded-full bg-emerald-500 shrink-0" />
-              <span className="text-[11px] text-emerald-500 font-medium">Online</span>
+              <span className="text-[11px] text-emerald-500 font-medium">{s.sidebar.online}</span>
             </div>
           </div>
         </div>

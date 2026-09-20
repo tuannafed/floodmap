@@ -1,26 +1,15 @@
-import {
-  Calendar,
-  ChevronDown,
-  ChevronRight,
-  Inbox,
-  SearchX,
-} from 'lucide-react'
-import { useState } from 'react'
+import { Calendar, ChevronDown, ChevronRight, Inbox, SearchX } from 'lucide-react';
+import { useState } from 'react';
 
-import { Badge } from '@/components/ui/badge'
-import {
-  groupByStage,
-  laneColor,
-  phaseProgress,
-  STAGES,
-  shortDate,
-} from '@/lib/status'
-import type { Task } from '@/lib/task-parser'
-import { cn } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge';
+import { useI18n } from '@/lib/i18n/context';
+import { groupByStage, laneColor, phaseProgress, STAGES, shortDate } from '@/lib/status';
+import type { Task } from '@/lib/task-parser';
+import { cn } from '@/lib/utils';
 
 interface TasksListProps {
-  tasks: Task[]
-  onOpen: (id: string) => void
+  tasks: Task[];
+  onOpen: (id: string) => void;
 }
 
 function TaskRow({
@@ -28,17 +17,15 @@ function TaskRow({
   onOpen,
   stageColor,
 }: {
-  task: Task
-  onOpen: (id: string) => void
-  stageColor: string
+  task: Task;
+  onOpen: (id: string) => void;
+  stageColor: string;
 }) {
-  const progress = phaseProgress(task)
-  const pct = progress
-    ? Math.round((progress.done / Math.max(1, progress.total)) * 100)
-    : 0
-  const hasProgress = !!progress
-  const laneClr = laneColor(task.lane)
-  const date = shortDate(task.updated || task.created)
+  const progress = phaseProgress(task);
+  const pct = progress ? Math.round((progress.done / Math.max(1, progress.total)) * 100) : 0;
+  const hasProgress = !!progress;
+  const laneClr = laneColor(task.lane);
+  const date = shortDate(task.updated || task.created);
 
   return (
     <button
@@ -76,7 +63,7 @@ function TaskRow({
               />
             </div>
             <span
-              className="text-[12px] font-semibold tabular-nums shrink-0 w-9 text-right"
+              className="text-xs font-semibold tabular-nums shrink-0 w-9 text-right"
               style={{ color: stageColor }}
             >
               {pct}%
@@ -102,27 +89,26 @@ function TaskRow({
       </div>
 
       {/* Type */}
-      <div className="text-[12px] text-muted-foreground/80 capitalize truncate">
-        {task.type || '—'}
-      </div>
+      <div className="text-xs text-muted-foreground/80 capitalize truncate">{task.type || '—'}</div>
 
       {/* Updated date */}
       <div className="flex items-center gap-1.5 text-muted-foreground/70">
         {date ? (
           <>
             <Calendar className="size-3 shrink-0" />
-            <span className="text-[12px]">{date}</span>
+            <span className="text-xs">{date}</span>
           </>
         ) : (
           <span className="text-[11px] text-muted-foreground/40">—</span>
         )}
       </div>
     </button>
-  )
+  );
 }
 
 export function TasksList({ tasks, onOpen }: TasksListProps) {
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const { s, stage: translateStage } = useI18n();
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   if (tasks.length === 0) {
     return (
@@ -131,20 +117,16 @@ export function TasksList({ tasks, onOpen }: TasksListProps) {
           <div className="size-12 rounded-xl border border-border/60 flex items-center justify-center">
             <Inbox className="size-5 text-muted-foreground/70" />
           </div>
-          <div className="text-sm font-medium text-muted-foreground">
-            No tasks yet
-          </div>
-          <div className="text-[12px] text-muted-foreground/70">
-            Create one with <code className="font-mono">/caw-plan</code>
-          </div>
+          <div className="text-sm font-medium text-muted-foreground">{s.tasksList.noTasksYet}</div>
+          <div className="text-xs text-muted-foreground/70">{s.tasksList.createWith}</div>
         </div>
       </div>
-    )
+    );
   }
 
-  const groups = groupByStage(tasks)
+  const groups = groupByStage(tasks);
 
-  const COL = '1fr 160px 100px 90px 110px'
+  const COL = '1fr 160px 100px 90px 110px';
 
   return (
     <div className="px-4 sm:px-6 pb-6 space-y-3">
@@ -154,42 +136,38 @@ export function TasksList({ tasks, onOpen }: TasksListProps) {
         style={{ gridTemplateColumns: COL }}
       >
         <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-          Task
+          {s.tasksList.columns.task}
         </span>
         <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-          Progress
+          {s.tasksList.columns.progress}
         </span>
         <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-          Lane
+          {s.tasksList.columns.lane}
         </span>
         <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-          Type
+          {s.tasksList.columns.type}
         </span>
         <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-          Updated
+          {s.tasksList.columns.updated}
         </span>
       </div>
 
       {/* No search results */}
-      {STAGES.every((s) => (groups[s.key] || []).length === 0) && (
+      {STAGES.every((st) => (groups[st.key] || []).length === 0) && (
         <div className="rounded-xl border border-border/40 flex flex-col items-center justify-center gap-3 py-16 text-center">
           <div className="size-12 rounded-xl border border-border/60 flex items-center justify-center">
             <SearchX className="size-5 text-muted-foreground/70" />
           </div>
-          <div className="text-sm font-medium text-muted-foreground">
-            No results
-          </div>
-          <div className="text-[12px] text-muted-foreground/70">
-            Try a different search term
-          </div>
+          <div className="text-sm font-medium text-muted-foreground">{s.tasksList.noResults}</div>
+          <div className="text-xs text-muted-foreground/70">{s.tasksList.tryDifferent}</div>
         </div>
       )}
 
       {STAGES.map((stage) => {
-        const stageTasks = groups[stage.key] || []
-        if (stageTasks.length === 0) return null
-        const isCollapsed = collapsed[stage.key]
-        const Icon = stage.icon
+        const stageTasks = groups[stage.key] || [];
+        if (stageTasks.length === 0) return null;
+        const isCollapsed = collapsed[stage.key];
+        const Icon = stage.icon;
 
         return (
           <div
@@ -202,15 +180,11 @@ export function TasksList({ tasks, onOpen }: TasksListProps) {
             {/* Section header */}
             <button
               type="button"
-              onClick={() =>
-                setCollapsed((c) => ({ ...c, [stage.key]: !c[stage.key] }))
-              }
+              onClick={() => setCollapsed((c) => ({ ...c, [stage.key]: !c[stage.key] }))}
               className="w-full flex items-center gap-2.5 px-4 py-2.5 transition-colors hover:bg-muted/20"
               style={{
                 background: `linear-gradient(to right, ${stage.color}14, transparent)`,
-                borderBottom: isCollapsed
-                  ? 'none'
-                  : `1px solid ${stage.color}20`,
+                borderBottom: isCollapsed ? 'none' : `1px solid ${stage.color}20`,
                 borderLeft: `3px solid ${stage.color}`,
               }}
             >
@@ -219,16 +193,9 @@ export function TasksList({ tasks, onOpen }: TasksListProps) {
               ) : (
                 <ChevronDown className="size-4 text-muted-foreground/60 shrink-0" />
               )}
-              <Icon
-                size={14}
-                style={{ color: stage.color }}
-                className="shrink-0"
-              />
-              <span
-                className="text-[13px] font-semibold"
-                style={{ color: stage.color }}
-              >
-                {stage.label}
+              <Icon size={14} style={{ color: stage.color }} className="shrink-0" />
+              <span className="text-[13px] font-semibold" style={{ color: stage.color }}>
+                {translateStage(stage.key, stage.label)}
               </span>
               <span
                 className="text-[11px] font-semibold rounded px-1.5 py-0.5 ml-0.5"
@@ -245,18 +212,13 @@ export function TasksList({ tasks, onOpen }: TasksListProps) {
             {!isCollapsed && (
               <div>
                 {stageTasks.map((t) => (
-                  <TaskRow
-                    key={t.id}
-                    task={t}
-                    onOpen={onOpen}
-                    stageColor={stage.color}
-                  />
+                  <TaskRow key={t.id} task={t} onOpen={onOpen} stageColor={stage.color} />
                 ))}
               </div>
             )}
           </div>
-        )
+        );
       })}
     </div>
-  )
+  );
 }

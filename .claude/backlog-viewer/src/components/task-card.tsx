@@ -1,5 +1,6 @@
 import { ArrowRight, Calendar, Layers, ListTodo } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { useI18n } from '@/lib/i18n/context';
 import { laneColor, phaseProgress, shortDate, stageColor, statusLabel } from '@/lib/status';
 import type { Task } from '@/lib/task-parser';
 import { cn } from '@/lib/utils';
@@ -10,6 +11,7 @@ interface TaskCardProps {
 }
 
 export function TaskCard({ task, onOpen }: TaskCardProps) {
+  const { s, status } = useI18n();
   const progress = phaseProgress(task);
   const pct = progress ? Math.round((progress.done / Math.max(1, progress.total)) * 100) : 0;
   const laneClr = laneColor(task.lane);
@@ -23,15 +25,11 @@ export function TaskCard({ task, onOpen }: TaskCardProps) {
       type="button"
       onClick={() => onOpen(task.id)}
       className={cn(
-        'group w-full text-left rounded-xl bg-card p-4',
+        'group w-full text-left rounded-xl bg-card p-4 task-card-border',
         'transition-all duration-200',
         'hover:-translate-y-0.5',
         'focus-visible:outline-none',
       )}
-      style={{
-        border: '1px solid color-mix(in oklch, var(--primary) 22%, transparent)',
-        boxShadow: '0 0 16px -8px color-mix(in oklch, var(--primary) 30%, transparent)',
-      }}
     >
       <div className="flex items-center justify-between mb-2.5 gap-2">
         <div className="flex items-center gap-1.5 min-w-0">
@@ -84,13 +82,13 @@ export function TaskCard({ task, onOpen }: TaskCardProps) {
         {progress && (
           <span className="flex items-center gap-1">
             <Layers className="size-3" />
-            {progress.total} {progress.total === 1 ? 'phase' : 'phases'}
+            {s.taskCard.phase(progress.total)}
           </span>
         )}
         {progress && !done && remaining > 0 && (
           <span className="flex items-center gap-1">
             <ListTodo className="size-3" />
-            {remaining} left
+            {s.taskCard.left(remaining)}
           </span>
         )}
         {task.next_phase && !done && (
@@ -108,7 +106,7 @@ export function TaskCard({ task, onOpen }: TaskCardProps) {
           style={{ backgroundColor: `${stageClr}1f`, color: stageClr }}
         >
           <span className="size-1.5 rounded-full" style={{ backgroundColor: stageClr }} />
-          {statusLabel(task.status)}
+          {status(task.status, statusLabel(task.status))}
         </span>
         {date && (
           <div className="flex items-center gap-1 text-muted-foreground/70 shrink-0">

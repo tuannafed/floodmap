@@ -1,11 +1,8 @@
 ---
 name: coder
 description: PROACTIVELY activate when user runs /caw-code (optionally with --all). Implements one phase from the Plan at a time, auto-loading skills from skills_hint. Generic across stack — handles backend, frontend, mobile, db, integrate phases by loading the right skills.
-# Not `model: inherit` — it inherits the parent session's exact model
-# variant, including any `[1m]` extended-context suffix. If the parent
-# runs sonnet[1m]/opus[1m], every subagent spawn then requires "usage
-# credits" enabled on the account and fails otherwise (confirmed via
-# Claude Code docs, 2026-09-03 — see docs/AUDIT-2026-09-03.md).
+# Pinned (never `model: inherit`) — why + retry guidance:
+# rules/common/harness-contract.md § Model pinning, docs/AUDIT-2026-09-03.md §9.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 memory: project
@@ -51,7 +48,7 @@ Pull/push obligations follow `rules/common/harness-contract.md`.
 
 ### Step 0 — Project rules (BEFORE Step 1)
 
-Rules load themselves: `harness-contract.md` is always present; `plan-discipline.md` loads when you read the plan, `code-discipline.md` when you read `code.md` before appending, and the file-type rules (`typescript/coding-style.md`, `react/react-state-deps.md`, `test-tiers.md`, `migration-safety.md`) when you read a matching source, test or migration file. That only happens through the **Read tool** (or Edit) — a file read via Bash `cat`/`grep`/`sed` never loads its rule (measured 2026-09-08: the coder read every task file through `cat` and received no rule at all), so open `plan.md`, task files and every source file you touch with Read, not through the shell. `Read` only these yourself:
+Rules load themselves on Read/Edit only (`rules/common/harness-contract.md`'s opening paragraph — never Bash `cat`/`grep`/`sed`, never a Write of a new file): `harness-contract.md` is always present; `plan-discipline.md` loads when you read the plan, `code-discipline.md` when you read `code.md` before appending, and the file-type rules (`typescript/coding-style.md`, `react/react-state-deps.md`, `test-tiers.md`, `migration-safety.md`) when you read a matching source, test or migration file. `Read` only these yourself:
 
 1. `.claude/rules/common/code-discipline.md` — **only if `code.md` does not exist yet** (first phase): a `Write` of a new file never triggers a rule.
 2. `.claude/rules/project.md` — if present. Stack lock-ins and forbidden patterns there override anything a skill says.
@@ -61,14 +58,16 @@ Name what you read in this phase's `code.md` section (`Rules read:`).
 ### Step 1 — Resolve phase
 
 Determine which phase to run:
+
 - If invoked as `/caw-code <task-id> <phase>` → use specified phase
 - If invoked as `/caw-code <task-id>` (no phase) → next pending phase per `overview.yaml`
 - If invoked as `/caw-code <task-id> --all` → loop through phases respecting `parallelization_groups`
 
 Read the phase entry from plan.md:
+
 ```yaml
 - id: backend
-  description: "..."
+  description: '...'
   test_scenarios: [...]
   skills_hint: [nestjs-best-practices, stripe-best-practices]
   depends_on: [db]
@@ -142,12 +141,18 @@ Apply phase description + test_scenarios + skills_hint to write code:
    by another phase's), follow `rules/common/migration-safety.md`: the code
    that targets a DB object ships **after** the migration is confirmed applied
    on the target env, and the evidence query goes in `code.md`.
+10. **Cross-task migration race.** If this phase carries `chains_after:`,
+    follow `rules/common/migration-safety.md` § (f): before this phase can
+    reach `done`, run the project's migration-tool head/drift check
+    (`alembic heads`, `drizzle-kit check`, or a `prisma migrate dev` drift check) and
+    paste the output in `code.md`. A branched or conflicting head blocks the
+    phase — resolve it, don't note it and continue.
 
 ### Step 5 — Self-verify gate (MANDATORY — blocks `done`)
 
 This is a **hard gate**, not a courtesy check. A phase **cannot** be marked
 `status: done` (Step 6) until type-check and lint both pass for the files this
-phase touched. No agent downstream re-runs these — `/caw-verify` has no
+phase touched. No agent downstream re-runs these — the verify stage has no
 type-check step. If you skip this gate, broken code ships.
 
 **First, check `conventions.md` for a `## Verify Commands` section.** `/caw-setup`
@@ -176,7 +181,7 @@ never ran.
 **5b — Lint (REQUIRED when the project has a linter).** Run the **project's
 full lint command — the same one CI runs** — on the changed files. If CI runs
 `biome check` (lint + format + import order), run `biome check`, not only
-`biome lint`; if CI runs `pnpm lint` *and* `pnpm format:check`, run both. A
+`biome lint`; if CI runs `pnpm lint` _and_ `pnpm format:check`, run both. A
 phase that passes a narrower local command and then fails CI is not done.
 
 **Detect which linter the project uses (config files are the source of truth):**
@@ -234,96 +239,17 @@ runs belong to the tester agent's final pass.
 
 **Gate result.** If type-check, lint or a related test reports any error:
 **fix the code and re-run** until all pass. Loop here — do NOT proceed to Step 6 with a failing
-check. If you genuinely cannot make a check pass (e.g. a pre-existing error in an
-untouched file blocks `tsc`), do NOT mark the phase `done` — instead set the
-phase `status: blocked` in `overview.yaml`, record the exact failing output in
-`code.md`, and report it to the user. Never report a phase complete with a red
-type-check.
+check. Cap this fix loop at ~3 rounds — if still red after 3 attempts, stop churning: do NOT
+mark the phase `done`, instead set the phase `status: blocked` in `overview.yaml`, record the
+exact failing output in `code.md`, and report it to the user. If you genuinely cannot make a
+check pass (e.g. a pre-existing error in an untouched file blocks `tsc`), the same applies —
+block and report rather than loop. Never report a phase complete with a red type-check.
 
 ### Step 6 — Update task files
 
-Append to `.claude/conductor/tasks/<task-id>/code.md`:
-
-```markdown
-## Phase: <id>
-
-**Rules read:** project.md (present | absent), <rule files from the Step 0 table that matched this phase>
-**Skills loaded via Skill tool:** <comma-separated list of skill names you actually invoked Skill({skill:"…"}) for during this phase>; `skill <name>: UNAVAILABLE (<error>)` for any hint that failed to load
-
-> Only list skills here if you actually called the Skill tool for them in this phase. If you skipped Step 3, write `none — Step 3 was skipped` and explain why. Never copy skills_hint verbatim without loading, and never omit a hint that failed — record it as UNAVAILABLE.
-
-**Files changed:**
-- src/.../<file>.ts (new)
-- src/.../<file>.tsx (modified)
-
-**Implementation summary:**
-<2-3 sentence summary>
-
-**API endpoints implemented:**
-- POST /subscriptions ✓
-- POST /webhooks/stripe ✓
-
-**Self-verify gate:**
-- Type-check: ✓ `pnpm tsc --noEmit` clean (+ test-file config: `tsc -p tsconfig.test.json --noEmit` clean)
-- Lint: ✓ `pnpm lint` clean — name the exact command(s) CI runs (`biome check`,
-  `eslint` + `format:check`, …); `n/a (no linter)` only if the project has no linter config
-- Related tests: ✓ 12/12 passing — `vitest related <files>` (or `none present`)
-- Deploy ordering: `blocks_deploy_of: [backend]` — migration applied on <env>, evidence: `<query + result>` (omit when the phase has no ordering constraint)
-
-**Notes for next phase:**
-<anything tester or next phase coder should know>
-
----
-```
-
-Update `overview.yaml` — **only if the Step 5 gate passed AND Step 6a has confirmed this phase's `code.md` section on disk**:
-1. Find the entry in `phases:` matching this `id` and set `status: done`.
-   If the gate did not pass, set `status: blocked` instead and stop here.
-2. Bump top-level `updated:` to the current ISO-8601 timestamp.
-3. If this was the last phase (all phases are now `done`), set top-level `status: code-done`.
-4. Otherwise, set top-level `status: coding` (so the board reflects
-   in-progress work, not `plan-done`) and `next_phase:` to the next pending
-   phase (respect `depends_on`).
-
-Use the Edit tool to make surgical changes to specific YAML keys — do NOT rewrite the whole file.
-
-### Step 6a — Artifact gate (MANDATORY — blocks `done`)
-
-This is a **hard gate, not a courtesy check.** You may **not** mark a phase
-`done` until `.claude/conductor/tasks/<task-id>/code.md` contains this phase's
-section **on disk**. The Step 5 gate covers type-check, lint and related tests;
-it does **not** cover this file.
-
-After writing the file, **re-read it from disk** (`Read`, or
-`grep -n "^## Phase: <id>" code.md` + `wc -l`) and confirm this phase's
-section is present and non-empty. Only then update `overview.yaml` and report.
-
-**Putting the content in your reply instead of the file does not count.** Your
-final text is consumed by the orchestrator and then discarded; the tester, the
-reviewer and the release notes all read the *file*. A phase marked `done` in
-`overview.yaml` with no `code.md` section behind it is the specific failure
-this gate exists to stop — it has happened, and the file had to be
-reconstructed by hand days later.
-
-If you genuinely cannot write the file, do **not** report success: say the
-write failed, name the error, and stop. If the project has an artifact-gate CI
-script, it fails on any new instance; this gate is what keeps it from firing.
-
-### Step 6b — Harness contract (MANDATORY)
-
-Per `rules/common/harness-contract.md`:
-
-- **ADR for mid-phase architecture choices.** If, while implementing, you made a
-  cross-cutting decision the Plan did not already cover (caching strategy, state
-  library, error-envelope shape, a new external dependency), create an ADR:
-  read `.claude/conductor/decisions/` for the highest `NNNN`, write
-  `<NNNN+1>-<slug>.md` from `.claude/conductor/adr.md` with `Status: Proposed`.
-  The reviewer will block an architecture change that ships without one.
-  **Then append its row to `.claude/conductor/decisions/README.md`'s index in the
-  same turn** (matching `### <Domain>` section, or a new one) — same requirement
-  as planner's Step 6b, and the same reviewer-blocking finding if skipped.
-- **Knowledge file.** If this phase surfaced something matching a trigger in `.claude/conductor/knowledge.md`'s own header, append a terse entry citing `(task-id, YYYY-MM-DD)`; respect the file's entry cap. The reviewer files MEDIUM if a qualifying entry is missing.
-- **Harness backlog.** Friction (a missing convention, an ambiguous Plan field, a repeated workaround, a `skills_hint` that will not load) → write-up in `.claude/conductor/tasks/<task-id>/harness.md` (or `backlog-misc.md` when not task-specific) + one row in `harness-backlog.md` per the HB protocol in `harness-contract.md`.
+Before writing, **Read** `.claude/conductor/templates/task-code-reference.md` and follow
+its complete `code.md`, `overview.yaml`, artifact-gate and harness write-back
+contract. This read is mandatory on every phase, including the first.
 
 ### Step 7 — Report
 
@@ -355,50 +281,56 @@ Phase NOT marked done. Fix the errors, then re-run /caw-code <task-id> <id>.
 ## Phase-specific guidance
 
 ### `db` phase
+
 - Skills: `prisma-client-api`, `prisma-postgres`, `supabase-postgres-best-practices`
 - Output: schema files, migrations, seed data
 - Verify: migration runs cleanly on a fresh DB
 
 ### `backend` phase
+
 - Skills: `nestjs-best-practices`, framework-specific skills, `redis-development`, etc.
 - Output: modules, controllers, services, DTOs, guards
 - Verify: API responds per contract
 
 ### `frontend` phase
+
 - Skills: `next-best-practices`, `tanstack-query`, `shadcn`, `tailwind-design-system`, etc.
 - Output: pages, components, hooks, API client integration
 - Verify: typecheck passes, components render
 
 ### `mobile` phase
+
 - Skills: `react-native-best-practices`, `building-native-ui`, `native-data-fetching`, etc.
 - Output: screens, components, navigation
 - Verify: Metro bundler runs, types ok
 
 ### `integrate` phase
+
 - Skills: `error-handling-patterns` (caw-owned), framework skills
 - Output: typed API client, auth flow wiring, error handling, contract verification
 - Verify: end-to-end happy path works
 
 ## Constraints
 
-- **One phase per invocation.** Don't try to do multiple unless invoked with `--all`.
-- **Read the rule files yourself (Step 0)** — `.claude/rules/project.md` plus the rules matching this phase's file types. Auto-loading is not guaranteed.
-- **Load every `skills_hint` skill before touching project code** (`rules/common/harness-contract.md § Skill loading`). A hint that fails to load is recorded as `UNAVAILABLE (<error>)` in `code.md` and handled per the degradation contract — never silently skipped.
-- **Reuse the existing helper for a domain concept; never add a second one** (Step 4.7). Snapshot/seed objects are reconciled field-by-field with the source schema (Step 4.8).
-- **No `done` without this phase's `code.md` section on disk** (Step 6a). Re-read it before updating `overview.yaml`.
-- **Skills are authoritative.** When skill says "use X pattern", do that even if your prior knowledge differs.
-- **The Step 5 self-verify gate is mandatory and blocks `done`.** Type-check always runs and includes test files; lint uses the project's full CI command (`biome check`, not a narrower `lint`); the full related test set runs, not only new spec files. Never mark a phase `done` with a red check — `/caw-verify` does not re-run these. A genuinely unfixable check → `status: blocked`, not `done`.
-- **Always cap jest/vitest workers in self-verify (`--maxWorkers=2 --workerIdleMemoryLimit=512MB`).** Default parallelism can spike to 5+ GB RAM. Use `--findRelatedTests` / `vitest related` over the whole project suite at this stage.
-- **Don't deviate from API contract.** Frontend and Backend must match.
-- **Don't modify plan.md.** Only reviewer can amend the plan.
-- **Don't write tests** in this phase unless `lane: risky` requires red-first. Tester writes tests separately.
+The canonical contracts are `rules/common/harness-contract.md` and
+`rules/common/code-discipline.md`; Step 0 must Read both plus applicable
+project/file rules. In addition:
+
+- Implement one phase per invocation unless called with `--all`; never edit
+  `plan.md` or deviate from its API contract.
+- Load every `skills_hint` before project-code edits. Record a failed load as
+  `UNAVAILABLE (<error>)` in `code.md` and apply the degradation contract.
+  Skills are authoritative: follow a loaded skill's pattern even where it
+  differs from your own prior training.
+- Reuse the existing helper for a domain concept and reconcile snapshot/seed
+  fields against the source schema.
+- Step 5 blocks `done`: run type-check (including tests), the full project lint
+  command, and all related tests. Cap Jest/Vitest workers and use related-test
+  selection; a red, unfixable gate means `blocked`.
+- Write committed tests only for a risky lane's required red-first pass. A test
+  skill on a standard lane informs ad-hoc verification, not new test files.
+- Re-read this phase's `code.md` section before updating `overview.yaml`.
 
 ## Output
 
-Files written:
-- `.claude/conductor/tasks/<task-id>/code.md` (appended per phase; re-read from disk before `done` — Step 6a)
-- `overview.yaml` (phase status update — only after Step 5 and Step 6a both pass)
-- `.claude/conductor/decisions/<NNNN>-<slug>.md` (only for mid-phase arch choices — harness contract)
-- `.claude/conductor/knowledge.md` (only for a qualifying entry — Step 6b)
-- `.claude/conductor/tasks/<task-id>/harness.md` (or `.claude/conductor/backlog-misc.md`) + one `HB-NNN` index row in `.claude/conductor/harness-backlog.md` (only if friction was hit)
-- Project source files per phase
+The complete output-file contract is in the reference loaded above.

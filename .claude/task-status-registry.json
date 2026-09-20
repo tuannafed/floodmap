@@ -1,0 +1,339 @@
+{
+  "_comment": "Canonical task-status registry -- the single source of truth for every consumer that needs to know what a task's top-level `status:` field can legally be, which stage/column it belongs to, whether it's terminal, its legal next action, and which task artifact file becomes relevant at that point. Ships to <project>/.claude/task-status-registry.json (always synced via init/upgrade/drift/remove -- reference data, never user-owned). Consumers: templates/scripts/check-overview.py (legality + terminal), templates/scripts/caw-status.sh (terminal for its Active/Finished split, via a python3 one-liner -- next_action/artifact are recorded here for completeness and cross-checked by scripts/tests/status-registry-parity.sh against caw-status.sh's own next_cmd() output, but caw-status.sh's bash case statement remains the executable implementation, not a generated one, since it already handles the next_phase-dependent dynamic parts these two fields can't express statically), tools/backlog-viewer/scripts/generate-status-map.mjs (stage/label, generates src/lib/status-map.generated.ts at build time). next_action is one of: plan|code|verify|review|commit|unblock|status|none (status = no single next step, matches caw-status.sh's generic */fallback case; unblock = human must unblock first). artifact is the task file (plan.md/code.md/tests.md/review.md) that stage's own agent writes, or null for statuses with no single relevant artifact (pending, blocked, terminal). Phase-level status (phases[].status) is a separate, smaller enum documented in conductor/templates/task-plan-reference.md and validated by check-overview.py's own PHASE_STATUS constant -- not covered here, no cross-consumer drift was found for it.",
+  "stages": [
+    {
+      "key": "pending",
+      "label": "Pending"
+    },
+    {
+      "key": "planning",
+      "label": "Planning"
+    },
+    {
+      "key": "coding",
+      "label": "Coding"
+    },
+    {
+      "key": "testing",
+      "label": "Testing"
+    },
+    {
+      "key": "review",
+      "label": "Review"
+    },
+    {
+      "key": "blocked",
+      "label": "Blocked"
+    },
+    {
+      "key": "done",
+      "label": "Done"
+    },
+    {
+      "key": "unknown",
+      "label": "Unknown"
+    }
+  ],
+  "statuses": [
+    {
+      "name": "pending",
+      "label": "Pending",
+      "stage": "pending",
+      "terminal": false,
+      "alias_of": null,
+      "documented": true,
+      "next_action": "status",
+      "artifact": null
+    },
+    {
+      "name": "plan-pending",
+      "label": "Plan pending",
+      "stage": "pending",
+      "terminal": false,
+      "alias_of": "pending",
+      "documented": false,
+      "next_action": "status",
+      "artifact": "plan.md"
+    },
+    {
+      "name": "planning",
+      "label": "Planning",
+      "stage": "planning",
+      "terminal": false,
+      "alias_of": null,
+      "documented": false,
+      "next_action": "status",
+      "artifact": "plan.md"
+    },
+    {
+      "name": "plan-done",
+      "label": "Plan ready",
+      "stage": "planning",
+      "terminal": false,
+      "alias_of": null,
+      "documented": true,
+      "next_action": "code",
+      "artifact": "plan.md"
+    },
+    {
+      "name": "planned",
+      "label": "Plan ready",
+      "stage": "planning",
+      "terminal": false,
+      "alias_of": "plan-done",
+      "documented": false,
+      "next_action": "code",
+      "artifact": "plan.md"
+    },
+    {
+      "name": "coding",
+      "label": "Coding",
+      "stage": "coding",
+      "terminal": false,
+      "alias_of": null,
+      "documented": true,
+      "next_action": "code",
+      "artifact": "code.md"
+    },
+    {
+      "name": "code-pending",
+      "label": "Code pending",
+      "stage": "coding",
+      "terminal": false,
+      "alias_of": "coding",
+      "documented": false,
+      "next_action": "status",
+      "artifact": "code.md"
+    },
+    {
+      "name": "code-done",
+      "label": "Code done",
+      "stage": "coding",
+      "terminal": false,
+      "alias_of": null,
+      "documented": true,
+      "next_action": "verify",
+      "artifact": "code.md"
+    },
+    {
+      "name": "in-progress",
+      "label": "In progress",
+      "stage": "coding",
+      "terminal": false,
+      "alias_of": "coding",
+      "documented": false,
+      "next_action": "status",
+      "artifact": "code.md"
+    },
+    {
+      "name": "in_progress",
+      "label": "In progress",
+      "stage": "coding",
+      "terminal": false,
+      "alias_of": "coding",
+      "documented": false,
+      "next_action": "status",
+      "artifact": "code.md"
+    },
+    {
+      "name": "testing",
+      "label": "Testing",
+      "stage": "testing",
+      "terminal": false,
+      "alias_of": null,
+      "documented": true,
+      "next_action": "status",
+      "artifact": "tests.md"
+    },
+    {
+      "name": "red-done",
+      "label": "Tests red",
+      "stage": "testing",
+      "terminal": false,
+      "alias_of": null,
+      "documented": true,
+      "next_action": "verify",
+      "artifact": "tests.md"
+    },
+    {
+      "name": "tests-done",
+      "label": "Tests passing",
+      "stage": "testing",
+      "terminal": false,
+      "alias_of": null,
+      "documented": true,
+      "next_action": "review",
+      "artifact": "tests.md"
+    },
+    {
+      "name": "tests-skipped",
+      "label": "Tests skipped",
+      "stage": "testing",
+      "terminal": false,
+      "alias_of": null,
+      "documented": true,
+      "next_action": "review",
+      "artifact": "tests.md"
+    },
+    {
+      "name": "reviewing",
+      "label": "Reviewing",
+      "stage": "review",
+      "terminal": false,
+      "alias_of": null,
+      "documented": true,
+      "next_action": "status",
+      "artifact": "review.md"
+    },
+    {
+      "name": "review-pending",
+      "label": "Review pending",
+      "stage": "review",
+      "terminal": false,
+      "alias_of": "reviewing",
+      "documented": false,
+      "next_action": "status",
+      "artifact": "review.md"
+    },
+    {
+      "name": "ready-to-review",
+      "label": "Ready to review",
+      "stage": "review",
+      "terminal": false,
+      "alias_of": "reviewing",
+      "documented": false,
+      "next_action": "status",
+      "artifact": "review.md"
+    },
+    {
+      "name": "review-blocked",
+      "label": "Review blocked",
+      "stage": "blocked",
+      "terminal": false,
+      "alias_of": null,
+      "documented": true,
+      "next_action": "code",
+      "artifact": "review.md"
+    },
+    {
+      "name": "needs-rework",
+      "label": "Needs rework",
+      "stage": "blocked",
+      "terminal": false,
+      "alias_of": null,
+      "documented": true,
+      "next_action": "code",
+      "artifact": "review.md"
+    },
+    {
+      "name": "blocked",
+      "label": "Blocked",
+      "stage": "blocked",
+      "terminal": false,
+      "alias_of": null,
+      "documented": true,
+      "next_action": "unblock",
+      "artifact": null
+    },
+    {
+      "name": "review-done",
+      "label": "Reviewed",
+      "stage": "done",
+      "terminal": false,
+      "alias_of": null,
+      "documented": true,
+      "next_action": "commit",
+      "artifact": "review.md"
+    },
+    {
+      "name": "verify-done",
+      "label": "Reviewed",
+      "stage": "done",
+      "terminal": false,
+      "alias_of": "review-done",
+      "documented": true,
+      "next_action": "status",
+      "artifact": "review.md"
+    },
+    {
+      "name": "verified",
+      "label": "Verified",
+      "stage": "done",
+      "terminal": false,
+      "alias_of": "review-done",
+      "documented": false,
+      "next_action": "commit",
+      "artifact": "review.md"
+    },
+    {
+      "name": "review-approved",
+      "label": "Review approved",
+      "stage": "done",
+      "terminal": false,
+      "alias_of": "review-done",
+      "documented": false,
+      "next_action": "status",
+      "artifact": "review.md"
+    },
+    {
+      "name": "approved",
+      "label": "Approved",
+      "stage": "done",
+      "terminal": false,
+      "alias_of": "review-done",
+      "documented": false,
+      "next_action": "status",
+      "artifact": "review.md"
+    },
+    {
+      "name": "ready-to-commit",
+      "label": "Ready to commit",
+      "stage": "done",
+      "terminal": false,
+      "alias_of": "review-done",
+      "documented": false,
+      "next_action": "status",
+      "artifact": "review.md"
+    },
+    {
+      "name": "done",
+      "label": "Done",
+      "stage": "done",
+      "terminal": true,
+      "alias_of": null,
+      "documented": true,
+      "next_action": "none",
+      "artifact": null
+    },
+    {
+      "name": "completed",
+      "label": "Completed",
+      "stage": "done",
+      "terminal": true,
+      "alias_of": "done",
+      "documented": false,
+      "next_action": "status",
+      "artifact": null
+    },
+    {
+      "name": "closed",
+      "label": "Closed",
+      "stage": "done",
+      "terminal": true,
+      "alias_of": null,
+      "documented": true,
+      "next_action": "none",
+      "artifact": null
+    },
+    {
+      "name": "deferred",
+      "label": "Deferred",
+      "stage": "done",
+      "terminal": true,
+      "alias_of": null,
+      "documented": true,
+      "next_action": "none",
+      "artifact": null
+    }
+  ]
+}

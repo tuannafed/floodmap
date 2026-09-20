@@ -1,0 +1,1 @@
+- [Stop hook reformat shifts citations](stop-hook-reformat-shifts-citations.md) — format touched files yourself before citing file:line in code.md; the Stop hook will otherwise reformat and shift them.

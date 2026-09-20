@@ -1,11 +1,11 @@
-import type { Task } from '@/lib/task-parser'
-import { ActivityFeed } from './activity-feed'
-import { ProjectHealth } from './project-health'
-import { ProjectInfo } from './project-info'
-import { StatsCards } from './stats-cards'
+import type { Task } from '@/lib/task-parser';
+import { ActivityFeed } from './activity-feed';
+import { ProjectHealth } from './project-health';
+import { ProjectInfo } from './project-info';
+import { StatsCards } from './stats-cards';
 
 interface DashboardProps {
-  tasks: Task[]
+  tasks: Task[];
 }
 
 export function Dashboard({ tasks }: DashboardProps) {
@@ -19,5 +19,5 @@ export function Dashboard({ tasks }: DashboardProps) {
 
       <ProjectInfo />
     </div>
-  )
+  );
 }

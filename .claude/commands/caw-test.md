@@ -1,4 +1,5 @@
 ---
+description: Test a task — mode derived from the Plan's lane (tiny=skip, standard=full, risky=all)
 model: sonnet
 ---
 
@@ -18,15 +19,20 @@ Check `command -v herdr` once. **If available:** spawn a peer session instead of
 subagent, so this work runs in its own context:
 
 ```bash
-PEER_NAME="tester-<task-id>-$(date +%s)"
-.claude/scripts/spawn-herdr-peer.sh "$PEER_NAME"
+OUT=$("$(git rev-parse --show-toplevel)/.claude/scripts/spawn-herdr-peer.sh" tester <task-id>); RC=$?
+PEER_NAME=$(sed -n 's/.*SESSION=\([^ ]*\).*/\1/p' <<<"$OUT")
 ```
 
-Exit `2` → herdr isn't actually usable, fall back below. `1` → spawn failed to reach a ready
+Session names follow **`<project>-<agent>-<task-NNN>[-<phase>]`** (e.g. `sos-tester-task-001`, `sos-coder-task-001-aqi-legend-fix`) — the script prefixes the project, drops the task slug, and appends `-2`, `-3` when that name is already live, so a retry never resumes a stale peer's context. Always message the `SESSION=` value it prints, never a string you composed.
+
+`$RC` = `2` → herdr isn't actually usable, fall back below. `1` → spawn failed to reach a ready
 prompt — report it, don't silently retry or fall back without saying so. `0` → delegate:
 
 ```
-SendMessage({ to: "$PEER_NAME", message: "Run the tester flow for task <task-id>", notify_when_idle: true })
+SendMessage({ to: "$PEER_NAME", message: "You are the tester for
+<task-id> — do this work yourself, directly in this session. Do not spawn
+another peer, subagent, or herdr session to do it for you. Run the tester
+flow for task <task-id>", notify_when_idle: true })
 ```
 
 If `SendMessage` reports the peer isn't reachable yet, retry a few times a few seconds apart (a
@@ -41,7 +47,7 @@ Either way, the tester derives its test mode from the task `lane` — there is n
 | `lane` | What tester does |
 |---|---|
 | `tiny` | No-op. Append "skipped per plan" to tests.md. Loads no skills. |
-| `standard` | Write tests for backend phases (post-implementation) — cheapest test type per scenario (unit/integration first, E2E only for the endpoint contract). Verify pass. Mobile = unit only. |
+| `standard` | Write tests for ALL phases, backend and frontend alike (post-implementation) — cheapest test type per scenario (unit/integration first, E2E only for the endpoint contract). Verify pass. Mobile = unit only. |
 | `risky` (red mode) | Write FAILING tests for all phases BEFORE coder runs — same cheapest-test-type selection. Confirm all fail. |
 | `risky` (green mode) | After coder completes, run all tests. Verify pass. Coverage report. |
 
@@ -61,5 +67,5 @@ change, out-of-scope code).
 
 Next step depends on flow:
 - After the red pass (lane=risky, status `red-done`) → `/caw-code <task-id>` to make tests pass
-- After post-impl test, all green → `/caw-review <task-id>` (or `/caw-verify` for parallel)
+- After post-impl test, all green → `/caw-review <task-id>` (or `/caw-run <task-id>` for the leader-verified parallel loop)
 - Tester reports a structural bug it could not fix → `/caw-code <task-id> <phase>`

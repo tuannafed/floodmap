@@ -58,3 +58,11 @@ Mirror the index pattern. `MEMORY.md` is the index — one line per note,
 (`name`, `description`, `metadata.type`). Before adding a note, check whether an
 existing file already covers it and update that instead of duplicating; delete a note
 that turns out wrong.
+
+## Keep the index bounded
+
+`MEMORY.md` grows one line per fact and nothing prunes it automatically. When it
+passes roughly 40 lines, or a topic accumulates five or more related `slug.md`
+files, consolidate before adding the next note: merge the related files, rewrite
+the index lines that pointed at them, delete the emptied files. Do this as part
+of writing the next note in that area, not as a separate cleanup pass.

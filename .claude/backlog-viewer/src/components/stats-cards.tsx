@@ -1,6 +1,7 @@
 import { Ban, CheckCircle2, ListTodo, Loader2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
+import { useI18n } from '@/lib/i18n/context';
 import { computeStats } from '@/lib/status';
 import type { Task } from '@/lib/task-parser';
 
@@ -37,37 +38,38 @@ interface StatsCardsProps {
 }
 
 export function StatsCards({ tasks }: StatsCardsProps) {
+  const { s } = useI18n();
   const stats = computeStats(tasks);
   const completion = stats.total === 0 ? 0 : Math.round((stats.done / stats.total) * 100);
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
       <StatCard
-        icon={<ListTodo className="size-[15px]" />}
-        title="Total Tasks"
+        icon={<ListTodo className="size-3.75" />}
+        title={s.stats.totalTasks}
         value={stats.total}
-        detail={`${completion}% complete`}
+        detail={s.stats.complete(completion)}
         accent="var(--primary)"
       />
       <StatCard
-        icon={<Loader2 className="size-[15px]" />}
-        title="In Progress"
+        icon={<Loader2 className="size-3.75" />}
+        title={s.stats.inProgress}
         value={stats.inProgress}
-        detail={`${stats.pending} pending`}
+        detail={s.stats.pendingCount(stats.pending)}
         accent="var(--primary)"
       />
       <StatCard
-        icon={<CheckCircle2 className="size-[15px]" />}
-        title="Done"
+        icon={<CheckCircle2 className="size-3.75" />}
+        title={s.stats.done}
         value={stats.done}
-        detail="Completed"
+        detail={s.stats.completed}
         accent="#68d391"
       />
       <StatCard
-        icon={<Ban className="size-[15px]" />}
-        title="Blocked"
+        icon={<Ban className="size-3.75" />}
+        title={s.stats.blocked}
         value={stats.blocked}
-        detail={stats.blocked > 0 ? 'Needs attention' : 'All clear'}
+        detail={stats.blocked > 0 ? s.stats.needsAttention : s.stats.allClear}
         accent={stats.blocked > 0 ? '#fc8181' : '#68d391'}
       />
     </div>

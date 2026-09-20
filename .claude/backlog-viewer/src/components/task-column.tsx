@@ -1,4 +1,5 @@
 import { Inbox } from 'lucide-react';
+import { useI18n } from '@/lib/i18n/context';
 import type { Stage } from '@/lib/status';
 import type { Task } from '@/lib/task-parser';
 import { TaskCard } from './task-card';
@@ -9,21 +10,13 @@ interface TaskColumnProps {
   onOpen: (id: string) => void;
 }
 
-const EMPTY_COPY: Record<string, string> = {
-  pending: 'Standby for incoming assignments',
-  planning: 'Planning queue is clear',
-  coding: 'Nothing in development',
-  testing: 'No tests running',
-  review: 'Review queue is empty',
-  blocked: 'Nothing blocked',
-  done: 'No completed tasks yet',
-};
-
 export function TaskColumn({ stage, tasks, onOpen }: TaskColumnProps) {
+  const { s, stage: translateStage } = useI18n();
+  const EMPTY_COPY = s.taskColumn.empty as Record<string, string>;
   const Icon = stage.icon;
   const empty = tasks.length === 0;
   return (
-    <div className="shrink-0 w-[320px] lg:w-[360px] flex flex-col h-full">
+    <div className="shrink-0 w-80 lg:w-90 flex flex-col h-full">
       <div
         className="rounded-2xl bg-card/60 flex flex-col max-h-full overflow-hidden relative"
         style={{
@@ -55,7 +48,7 @@ export function TaskColumn({ stage, tasks, onOpen }: TaskColumnProps) {
               className="text-[13px] font-semibold uppercase tracking-wide truncate"
               style={{ color: stage.color }}
             >
-              {stage.label}
+              {translateStage(stage.key, stage.label)}
             </span>
           </div>
           <span
@@ -76,9 +69,11 @@ export function TaskColumn({ stage, tasks, onOpen }: TaskColumnProps) {
               <div className="size-11 rounded-xl border border-border/60 flex items-center justify-center">
                 <Inbox className="size-5 text-muted-foreground/50" />
               </div>
-              <div className="text-sm font-medium text-muted-foreground">No tasks</div>
-              <div className="text-[11px] text-muted-foreground/60 max-w-[180px] leading-relaxed">
-                {EMPTY_COPY[stage.key] || 'Nothing here'}
+              <div className="text-sm font-medium text-muted-foreground">
+                {s.taskColumn.noTasks}
+              </div>
+              <div className="text-[11px] text-muted-foreground/60 max-w-45 leading-relaxed">
+                {EMPTY_COPY[stage.key] || s.taskColumn.noTasks}
               </div>
             </div>
           ) : (

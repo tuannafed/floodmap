@@ -9,39 +9,21 @@
 export interface DomainStyle {
   key: string;
   label: string;
-  /** badge text color */
-  text: string;
-  /** badge background color */
-  bg: string;
-  /** solid accent color (charts, bars) */
+  /** solid accent color — used directly for charts/bars, and as badge
+   *  text + (alpha-blended) badge background so the badge adapts to the
+   *  card it sits on instead of a hardcoded dark chip that only worked in
+   *  dark mode (see laneColor/stageColor in lib/status.ts for the same
+   *  pattern already used by task badges). */
   color: string;
 }
 
 export const DOMAINS: Record<string, DomainStyle> = {
-  engineering: {
-    key: 'engineering',
-    label: 'Engineering',
-    text: '#60a5fa',
-    bg: '#1e3a5f',
-    color: '#60a5fa',
-  },
-  quality: { key: 'quality', label: 'Quality', text: '#4ade80', bg: '#1a3a2a', color: '#4ade80' },
-  product: { key: 'product', label: 'Product', text: '#fb923c', bg: '#3b2a1a', color: '#fb923c' },
-  workflow: {
-    key: 'workflow',
-    label: 'Workflow',
-    text: '#c084fc',
-    bg: '#2e1a4a',
-    color: '#c084fc',
-  },
-  security: {
-    key: 'security',
-    label: 'Security',
-    text: '#f87171',
-    bg: '#3a1a1a',
-    color: '#f87171',
-  },
-  devops: { key: 'devops', label: 'DevOps', text: '#38bdf8', bg: '#1a2e3a', color: '#38bdf8' },
+  engineering: { key: 'engineering', label: 'Engineering', color: '#60a5fa' },
+  quality: { key: 'quality', label: 'Quality', color: '#4ade80' },
+  product: { key: 'product', label: 'Product', color: '#fb923c' },
+  workflow: { key: 'workflow', label: 'Workflow', color: '#c084fc' },
+  security: { key: 'security', label: 'Security', color: '#f87171' },
+  devops: { key: 'devops', label: 'DevOps', color: '#38bdf8' },
 };
 
 export const ALL_DOMAINS = Object.keys(DOMAINS);

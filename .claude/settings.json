@@ -8,6 +8,8 @@
       "Write(.claude/**)",
       "Edit(.claude/**)",
       "Skill(.claude/skills/**)",
+      "Skill(superpowers:*)",
+      "Skill(agent-skills:*)",
       "Bash(git status)",
       "Bash(git diff*)",
       "Bash(git log*)",
@@ -144,7 +146,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-with-flags.js prompt-injection-detector .claude/hooks/prompt-injection-detector.js strict"
+            "command": "node ${CLAUDE_PROJECT_DIR}/.claude/hooks/run-with-flags.js prompt-injection-detector .claude/hooks/prompt-injection-detector.js strict"
           }
         ],
         "description": "Warn when reading sensitive files that may contain injected instructions (strict only)"
@@ -154,7 +156,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-with-flags.js prompt-injection-detector .claude/hooks/prompt-injection-detector.js strict"
+            "command": "node ${CLAUDE_PROJECT_DIR}/.claude/hooks/run-with-flags.js prompt-injection-detector .claude/hooks/prompt-injection-detector.js strict"
           }
         ],
         "description": "Warn when fetching URLs with suspicious prompt injection patterns (strict only)"
@@ -166,7 +168,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-with-flags.js post-edit-accumulator .claude/hooks/post-edit-accumulator.js standard,strict"
+            "command": "node ${CLAUDE_PROJECT_DIR}/.claude/hooks/run-with-flags.js post-edit-accumulator .claude/hooks/post-edit-accumulator.js standard,strict"
           }
         ],
         "description": "Accumulate edited JS/TS/Python paths for batch format+typecheck at Stop"
@@ -176,10 +178,22 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-with-flags.js context-load-logger .claude/hooks/context-load-logger.js standard,strict"
+            "command": "node ${CLAUDE_PROJECT_DIR}/.claude/hooks/run-with-flags.js context-load-logger .claude/hooks/context-load-logger.js standard,strict"
           }
         ],
         "description": "Log every Skill load to .claude/logs/context-loaded-<session>.log (transcript UI does not show it)"
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PROJECT_DIR}/.claude/hooks/run-with-flags.js context-load-logger .claude/hooks/context-load-logger.js standard,strict"
+          }
+        ],
+        "description": "Anchor the task column of the context-load log from a task id in the prompt (stdout stays empty — it would be injected into context)"
       }
     ],
     "InstructionsLoaded": [
@@ -188,7 +202,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-with-flags.js context-load-logger .claude/hooks/context-load-logger.js standard,strict"
+            "command": "node ${CLAUDE_PROJECT_DIR}/.claude/hooks/run-with-flags.js context-load-logger .claude/hooks/context-load-logger.js standard,strict"
           }
         ],
         "description": "Log every lazily-injected rule (paths: glob match) to .claude/logs/context-loaded-<session>.log"
@@ -200,7 +214,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-with-flags.js context-load-logger .claude/hooks/context-load-logger.js standard,strict"
+            "command": "node ${CLAUDE_PROJECT_DIR}/.claude/hooks/run-with-flags.js context-load-logger .claude/hooks/context-load-logger.js standard,strict"
           }
         ],
         "description": "Agent start marker in the context-load log — InstructionsLoaded events carry no agent name, so rules are attributed by position between markers"
@@ -212,7 +226,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-with-flags.js context-load-logger .claude/hooks/context-load-logger.js standard,strict"
+            "command": "node ${CLAUDE_PROJECT_DIR}/.claude/hooks/run-with-flags.js context-load-logger .claude/hooks/context-load-logger.js standard,strict"
           }
         ],
         "description": "Agent stop marker in the context-load log"
@@ -224,7 +238,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-with-flags.js session-summary .claude/hooks/session-summary.js standard,strict"
+            "command": "node ${CLAUDE_PROJECT_DIR}/.claude/hooks/run-with-flags.js session-summary .claude/hooks/session-summary.js standard,strict"
           }
         ],
         "description": "Print session summary (changed files, commits, active tasks) when session ends"
@@ -234,7 +248,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/run-with-flags.js stop-format-typecheck .claude/hooks/stop-format-typecheck.js standard,strict"
+            "command": "node ${CLAUDE_PROJECT_DIR}/.claude/hooks/run-with-flags.js stop-format-typecheck .claude/hooks/stop-format-typecheck.js standard,strict"
           }
         ],
         "description": "Batch format (Biome/Prettier/ruff) and typecheck all files edited this session"

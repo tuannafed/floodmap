@@ -1,11 +1,8 @@
 ---
 name: setup
 description: PROACTIVELY activate when user runs /caw-setup. Detects project tech stack, symlinks caw-curated skills, asks user before pulling hub skills, and generates conventions.md + skill-map.yaml. Required as first step after /init.
-# Not `model: inherit` — it inherits the parent session's exact model
-# variant, including any `[1m]` extended-context suffix. If the parent
-# runs sonnet[1m]/opus[1m], every subagent spawn then requires "usage
-# credits" enabled on the account and fails otherwise (confirmed via
-# Claude Code docs, 2026-09-03 — see docs/AUDIT-2026-09-03.md).
+# Pinned (never `model: inherit`) — why + retry guidance:
+# rules/common/harness-contract.md § Model pinning, docs/AUDIT-2026-09-03.md §9.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Skill
 memory: project
@@ -90,15 +87,15 @@ finishing, never per-task state.
 
 ### Phase 2 — Map stack to caw catalog (PRIORITY 1)
 
-**Stack → skill matching is fully delegated to `scripts/match-skills.py` in the caw repo. Do not match by hand.** LLM judgment misses skills (e.g. `sentry-react-sdk` got skipped because the agent thought `sentry-sdk-setup` was "enough"); the script does a mechanical intersection of every catalog `triggers` entry with every detected dep, with no skill ever skipped.
+**Stack → skill matching is fully delegated to `scripts/discovery/match-skills.py` in the caw repo. Do not match by hand.** LLM judgment misses skills (e.g. `sentry-react-sdk` got skipped because the agent thought `sentry-sdk-setup` was "enough"); the script does a mechanical intersection of every catalog `triggers` entry with every detected dep, with no skill ever skipped.
 
 **Step 2.1 — Run the matcher** (one Bash call):
 
 ```bash
-"$CAW_HOME/scripts/match-skills.py" "$PROJECT_PATH" --names-only
+"$CAW_HOME/scripts/discovery/match-skills.py" "$PROJECT_PATH" --names-only
 ```
 
-This scans **all** `package.json` files (root + `apps/*` + `packages/*` + `services/*`), `pyproject.toml`, `requirements*.txt`, and file-pattern triggers (`.github/workflows`, `components.json`, `turbo.json`, `tsconfig.json`). It returns every skill whose triggers intersect the detected universe — sorted, deduplicated, one per line.
+This scans **all** `package.json` files (root + `apps/*` + `packages/*` + `services/*`), `pyproject.toml`, `requirements*.txt`, `go.mod`, `Cargo.toml`, `pom.xml`/`build.gradle`/`build.gradle.kts`, `Package.swift`, and file-pattern triggers (`.github/workflows`, `components.json`, `turbo.json`, `tsconfig.json`). It returns every skill whose triggers intersect the detected universe — sorted, deduplicated, one per line — and (via the full non-`--names-only` JSON) a `detected.languages_detected` list and a `summary.no_local_catalog_coverage` flag.
 
 **Step 2.2 — Build the install list:**
 
@@ -111,57 +108,20 @@ This scans **all** `package.json` files (root + `apps/*` + `packages/*` + `servi
 
 **Do not** add skills outside the script output unless they are mandatory defaults (next sub-section) or user-approved hub skills (Phase 3).
 
+**Step 2.3 — Non-JS stacks (Go, Rust, Java, Swift, Python): note the coverage gap, don't fabricate skills.** The catalog has zero curated skills triggered by any Go/Rust/Java/Swift dependency, and only partial coverage for Python — `fastapi` and `sqlalchemy-alembic-expert-best-practices-code-review` cover FastAPI and SQLAlchemy/Alembic; nothing yet covers pgvector, dependency-injector, asyncpg, or any other Python dependency. `summary.no_local_catalog_coverage: true` in the matcher's JSON output means the stack was detected (`detected.languages_detected` is non-empty) but nothing in `.agents/skills/` or `templates/skills/` covers *that specific dependency* — check which Python deps actually matched before assuming the whole language has no coverage. When a real gap remains:
+- Do not invent or force-fit an unrelated JS-triggered skill onto a non-JS stack just to have *something* in the list.
+- Write a `plugin_fallback:` note into `skill-map.yaml` (Phase 5) naming the detected language(s) and stating that planner/coder/tester/reviewer should rely on the plugin-skill fallback for language-specific guidance this catalog doesn't cover yet — `rules/common/plugin-skill-fallback.md` (auto-loads for whoever reads `skill-map.yaml`) documents exactly how agents are allowed to use a plugin-namespaced skill (e.g. `superpowers:*`, `agent-skills:*`) as a stand-in.
+- Still install every mandatory default from the next sub-section that actually applies — see the non-Node carve-out there.
+
 **MANDATORY DEFAULTS — must always be added to the install list, regardless of detected stack, regardless of `--refresh` vs first-run.** These are not "considerations" — every entry below must end up in Phase 4.1's batch loop. Missing any of them from the installed `.agents/skills/` (and from `skill-map.yaml`) is a critical failure.
 
-Workflow defaults (14 skills — every project gets these):
-- `to-prd`
-- `webapp-testing`
-- `javascript-testing-patterns`
-- `react-component-testing` *(caw-owned — leak-free RTL+QueryClient patterns)*
-- `test-driven-development` *(red → green → refactor loop, obra/superpowers)*
-- `verification-before-completion` *(evidence-before-assertions before claiming done)*
-- `code-review-excellence`
-- `performance`
-- `accessibility`
-- `refactor`
-- `improve-codebase-architecture` *(architecture deepening + module consolidation)*
-- `systematic-debugging`
-- `find-skills`
-- `validate-skills`
+The single source of truth for this list is `<CAW_HOME>/scripts/data/skills-registry.json` (4 groups: 14 workflow + 7 product/PM + 3 cross-cutting + 16 caw-owned = 40 mandatory skills). Phase 4.1 reads it directly at install time — read `.claude/conductor/templates/setup-skills-reference.md` for the full human-readable per-group breakdown (names + why) before Phase 4.1 if you want the rationale; do not hand-copy it into your own install list. `scripts/checks/skills-registry.sh` (hub-side) keeps this file, `skills-registry.json`, and the two baseline counts below in agreement.
 
-Product/PM defaults (7 skills — planner agent depends on these; absence will make `/caw-plan` abort):
-- `prd-development`
-- `user-story`
-- `user-story-splitting`
-- `prioritization-advisor`
-- `business-analyst`
-- `create-specification`
-- `roadmap-planning`
+**How to apply:** at the end of Phase 2, your install list must contain (a) stack-mapped skills, (b) all 14 workflow defaults, (c) all 7 product defaults, (d) all 3 cross-cutting defaults, (e) all 16 caw-owned defaults — even if some symlinks already exist. Phase 4.1's `ln -sfn` is idempotent, so re-linking existing skills is cheap and safe. **Refresh mode does NOT mean "skip already-installed". Refresh means "re-evaluate the full default + stack list from scratch and ensure every entry exists on disk".**
 
-Cross-cutting defaults (3 skills — almost every modern project needs these; add unconditionally for TS/Node projects):
-- `typescript-advanced-types` *(any project with `typescript` in deps OR `tsconfig.json` at root)*
-- `github` *(every project we ship uses GitHub workflow)*
-- `github-actions` *(if `.github/workflows/` folder exists OR project ships CI)*
+**Exception — no `package.json` anywhere in the project (pure Go/Rust/Java/Swift/Python, no JS at all):** skip `javascript-testing-patterns`, `react-component-testing` (workflow defaults — their content is React/RTL-specific and actively misleading for a project with no JS), and `typescript-advanced-types` (cross-cutting — no TypeScript to apply it to). A mixed project (e.g. Go backend + a `package.json`-having React frontend anywhere in the tree) keeps all three — the exception is only for *zero* `package.json` in the whole scan, not "not primarily JS".
 
-caw-owned defaults (14 skills — always, sourced from `<CAW_HOME>/templates/skills/`; `react-component-testing` is caw-owned too but already counted in the workflow list):
-- `api-contract`
-- `error-handling-patterns`
-- `nextjs-feature` *(archetype — links everywhere, loads only when relevant)*
-- `adversarial-test-design`
-- `context-engineering`
-- `doubt-check`
-- `observability`
-- `performance-optimization`
-- `security-hardening`
-- `feedback-traceability`
-- `commit-conventions`
-- `package-manager`
-- `source-driven`
-- `runtime-smoke-test` *(tester loads it for the smoke gate)*
-
-**How to apply:** at the end of Phase 2, your install list must contain (a) stack-mapped skills, (b) all 14 workflow defaults, (c) all 7 product defaults, (d) all 3 cross-cutting defaults (skip `typescript-advanced-types` only for Python-only projects without TS), (e) all 14 caw-owned defaults — even if some symlinks already exist. Phase 4.1's `ln -sfn` is idempotent, so re-linking existing skills is cheap and safe. **Refresh mode does NOT mean "skip already-installed". Refresh means "re-evaluate the full default + stack list from scratch and ensure every entry exists on disk".**
-
-Pre-flight check before Phase 3: count your install list. It must be **38** (14 workflow + 7 product + 3 cross-cutting + 14 caw-owned) plus any stack matches. If it's smaller, you missed defaults — go back and add them.
+Pre-flight check before Phase 3: count your install list. For a project with `package.json` anywhere, it must be **40** (14 workflow + 7 product + 3 cross-cutting + 16 caw-owned) plus any stack matches. For a project with no `package.json` anywhere, it must be **37** (12 workflow + 7 product + 2 cross-cutting + 16 caw-owned) plus any stack matches. If it's smaller than the applicable baseline, you missed defaults — go back and add them.
 
 ### Phase 3 — Identify hub gaps (PRIORITY 2)
 
@@ -189,33 +149,41 @@ For stack components NOT covered by caw catalog:
 
 **Step 4.1 — Symlink caw-curated skills directly to `$CAW_HOME` (offline, fast, no copy)**
 
-Loop through the FULL install list built in Phase 2 — that means stack-mapped skills + 14 workflow defaults + 7 product defaults + 3 cross-cutting defaults + 14 caw-owned defaults (38 entries total). Do NOT filter to "only stack-mapped" or "only missing". `ln -sfn` is idempotent.
+Loop through the FULL install list built in Phase 2 — that means stack-mapped skills + 14 workflow defaults + 7 product defaults + 3 cross-cutting defaults + 16 caw-owned defaults (40 entries total). Do NOT filter to "only stack-mapped" or "only missing". `ln -sfn` is idempotent.
 
 Caw-curated skills are **not copied into the project**. `.claude/skills/<name>` is an absolute symlink straight into the caw repo (`$CAW_HOME`, resolved in Phase 1 from `.claude/caw.config.json`) — there is no project-local `.agents/skills/<name>` for these. The project always sees the live skill content from the caw repo; there is nothing to re-sync on `--refresh` beyond re-creating any missing links.
 
 Skills can come from two source dirs in caw repo:
 
 - `<CAW_HOME>/.agents/skills/<name>/` — hub skills (most defaults, framework skills)
-- `<CAW_HOME>/templates/skills/<name>/` — the 16 caw-owned skills (`api-contract`, `error-handling-patterns`, `nextjs-feature`, `react-component-testing`, `adversarial-test-design`, `context-engineering`, `doubt-check`, `observability`, `performance-optimization`, `security-hardening`, `feedback-traceability`, `commit-conventions`, `package-manager`, `source-driven`, `runtime-smoke-test`, and `shadcn-table-layout` — the last one is stack-matched by `match-skills.py` on `components.json`, not a default)
+- `<CAW_HOME>/templates/skills/<name>/` — the 18 caw-owned skills (17 mandatory defaults per `skills-registry.json` + `shadcn-table-layout`, which is stack-matched by `match-skills.py` on `components.json`, not a default)
 
-The script auto-resolves whichever path exists:
+The script auto-resolves whichever path exists. Build `$STACK_SKILLS` from Phase 2's stack-mapped list (e.g. `match-skills.py`'s `--names-only` output) plus any user-approved hub skills from Phase 3; the mandatory defaults come from `skills-registry.json` itself, not a hand-typed list — this is the actual fix for the "loop drifted from the documented 40" failure mode:
 
 ```bash
 cd /path/to/project
 mkdir -p .claude/skills
-for SKILL in \
-  next-best-practices vercel-react-best-practices shadcn tanstack-query \
-  to-prd webapp-testing javascript-testing-patterns react-component-testing \
-  test-driven-development verification-before-completion \
-  code-review-excellence performance accessibility refactor \
-  improve-codebase-architecture systematic-debugging \
-  find-skills validate-skills \
-  prd-development user-story user-story-splitting prioritization-advisor \
-  business-analyst create-specification roadmap-planning \
-  typescript-advanced-types github github-actions \
-  api-contract error-handling-patterns nextjs-feature \
-  adversarial-test-design context-engineering doubt-check \
-  observability performance-optimization security-hardening; do
+
+# Mandatory defaults straight from the registry — never hand-list these names.
+# has_pkg gates the 3 non_js_exempt entries per the non-JS exception, read from
+# the SAME normalized discovery result generators/project-meta.py and
+# discovery/match-skills.py use (root, apps/*, packages/*, services/*, and any
+# other immediate subdirectory) — not a root-only `[[ -f package.json ]]` test,
+# which would wrongly treat a project whose only package.json is nested (e.g.
+# apps/web/package.json, no root manifest) as non-JS.
+MANDATORY_SKILLS="$(python3 -c "
+import json, sys
+sys.path.insert(0, '$CAW_HOME/scripts')
+from lib.project_discovery import discover
+has_pkg = discover('.')['has_node']
+with open('$CAW_HOME/scripts/data/skills-registry.json') as f:
+    reg = json.load(f)
+for e in reg['skills']:
+    if e['mandatory'] and not (e.get('non_js_exempt') and not has_pkg):
+        print(e['name'])
+")"
+
+for SKILL in $MANDATORY_SKILLS $STACK_SKILLS; do
   if [[ -d "$CAW_HOME/.agents/skills/$SKILL" ]]; then
     SRC="$CAW_HOME/.agents/skills/$SKILL"
   elif [[ -d "$CAW_HOME/templates/skills/$SKILL" ]]; then
@@ -259,7 +227,7 @@ done
 ```
 
 Expected:
-- `ls -la` shows **38** entries (14 workflow + 7 product + 3 cross-cutting + 14 caw-owned) plus stack matches, all starting with `lrwxr-xr-x` (symlinks) and pointing at an absolute `$CAW_HOME/...` path — NOT `drwxr-xr-x` (real folders)
+- `ls -la` shows **40** entries (14 workflow + 7 product + 3 cross-cutting + 16 caw-owned) plus stack matches, all starting with `lrwxr-xr-x` (symlinks) and pointing at an absolute `$CAW_HOME/...` path — NOT `drwxr-xr-x` (real folders)
 - `find -xtype l` (broken symlink targets) returns nothing
 - the `readlink` loop prints nothing. Any line means a caw-curated skill link is relative or points somewhere other than `$CAW_HOME` — the exact drift class that once left 47 project-local links silently pointing at a gitignored `.agents/skills/` (dead on a fresh clone). Re-run Step 4.1 for the named skill; do not proceed to Phase 5 until this loop is silent.
 
@@ -299,309 +267,13 @@ straight to `$CAW_HOME`) are recorded in `skill-map.yaml` (Phase 5), which is
 the single caw-owned record of what is installed and where it came from. There
 is no separate caw lockfile.
 
-### Phase 5 — Generate skill-map.yaml
-
-**Step 5.0 — Derive `source:` per skill from disk, not from memory.** Do not decide caw-vs-hub by recalling which command you ran — a project with dozens of skills is easy to get wrong (a past bug wrote `source: caw` for every entry regardless of reality). Run this and use its output as the only source of truth for the `source:` field below:
-
-```bash
-echo "=== skill source (derived from readlink) ==="
-for link in .claude/skills/*; do
-  [[ -L "$link" ]] || continue
-  name="$(basename "$link")"
-  case "$(readlink "$link")" in
-    "$CAW_HOME"/*) echo "$name: caw" ;;
-    *)             echo "$name: hub" ;;
-  esac
-done
-```
-
-A `caw` result means the symlink resolves absolutely into the caw repo (Step 4.1). A `hub` result means it resolves into the project's own `.agents/skills/<name>/` (the real copy `npx skills add` created in Step 4.3). Every skill in the map below must match this output — don't hand-guess.
-
-Write `<project>/.claude/skill-map.yaml`:
-
-```yaml
-# Generated by /caw-setup at 2026-05-10T15:00
-# Re-run /caw-setup --refresh to regenerate
-
-detected_stack:
-  backend: nestjs
-  frontend: nextjs
-  mobile: expo
-  database: prisma + postgres
-  monorepo: turborepo
-
-installed_skills:
-  - stack: nestjs
-    skills: [nestjs-best-practices, websocket-engineer]
-    source: caw
-
-  - stack: prisma
-    skills: [prisma-client-api, prisma-postgres]
-    source: caw
-
-  - stack: stripe
-    skills: [stripe-best-practices, stripe-projects]
-    source: hub
-
-defaults:
-  # record EVERY installed default here — all 14 workflow + 7 product +
-  # 3 cross-cutting entries from Phase 2, not a sample
-  - to-prd
-  - webapp-testing
-  - javascript-testing-patterns
-  - code-review-excellence
-  - performance
-  - accessibility
-  - refactor
-  - systematic-debugging
-  # ... (remaining defaults)
-
-skipped:
-  - skill: bullmq-specialist
-    reason: "User declined hub install"
-```
-
-### Phase 6 — Generate conventions
-
-**Step 6.0 — Write `.claude/conductor/conventions.md` (human prose).** Read installed skills (caw + hub) for "best practice" baseline.
-
-Write `<project>/.claude/conductor/conventions.md`:
-
-```markdown
-# Project Conventions
-
-> Generated by /caw-setup. Edit freely — re-run /caw-setup --refresh to regenerate.
-> Extends CLAUDE.md (high-level project doc) with caw-specific archetype + folder contract.
-
-## Archetype
-
-[Detected from package.json + file scan, e.g., "nextjs-feature", "turborepo-fullstack"]
-
-## Stack
-
-- Backend: NestJS 11
-- Frontend: Next.js 15 + TanStack Query + shadcn
-- Mobile: Expo + React Native
-- Database: Prisma + Postgres
-- Monorepo: Turborepo + pnpm workspaces
-
-## Folder contract
-
-[Detected from project structure]
-
-apps/web/                    # Customer-facing Next.js app
-apps/admin/                  # Admin Next.js app
-apps/mobile/                 # Expo React Native
-apps/ext/                    # WXT browser extension
-packages/api-client/         # Shared typed API client
-packages/reui/               # Shared UI kit
-packages/shared/             # Shared utilities
-
-## Code Organization patterns
-
-[Inferred from existing code, e.g.:]
-- Constants live in `<feature>/constants.ts`, not inlined
-- Components > 150 lines split into sub-components
-- Cross-feature imports go through `index.ts`
-
-## Forbidden patterns
-
-[Inferred from CLAUDE.md + skill best practices]
-
-## Verify commands
-
-> Detected during stack scan. The coder runs these as its Step 5 self-verify
-> gate before marking a phase `done`. Fill each line with the real command for
-> THIS project — leave `n/a` only when the tool genuinely is not configured.
-
-- Type-check: [e.g. `pnpm tsc --noEmit` — or the `typecheck` script if package.json defines one]
-- Lint: [the project's actual linter. Detect from config files:
-    biome.json/.jsonc → `pnpm exec biome lint`;
-    eslint.config.* or .eslintrc* → `pnpm exec eslint`;
-    a `lint` script in package.json → `pnpm lint` (prefer this — it encodes the team's choice).
-    If the project ships BOTH Biome and ESLint config, list both commands and note which paths each owns.]
-- Unit test (single file): [e.g. `pnpm exec jest <file> --maxWorkers=2 --workerIdleMemoryLimit=512MB`]
-
-## Stack overrides
-
-[CLAUDE.md custom instructions that override defaults]
-```
-
-**Step 6.1 — Write `.claude/project.yaml` (machine-readable metadata).** Run the deterministic generator instead of writing YAML by hand. The script scans `package.json` (root + every workspace) and `conventions.md`, then emits a canonical `project.yaml` matching the schema in `<CAW_HOME>/conductor/project.yaml`. Any downstream tool (backlog viewer, external integrations) reads `project.yaml`, never tries to regex-parse `conventions.md`.
-
-```bash
-"$CAW_HOME/scripts/generate-project-meta.py" "$PROJECT_PATH"
-```
-
-Expected output: `✅ <project>/.claude/project.yaml  (N stack items, M tags)`.
-
-**Why a script instead of writing YAML inline:** the same lesson as Phase 2 — LLM judgment drifts (slightly different role labels, missed deps, version vs major-version inconsistency). The script is the single source of truth for how `package.json` deps map to display rows.
-
-If a stack tech is missing from the script's catalog (`STACK_RULES`), the user adds it to `scripts/generate-project-meta.py` and re-runs `/caw-setup --refresh`. Do not patch the generated `project.yaml` directly.
-
-### Phase 6c — Pin the caw version in `CLAUDE.md` (MANDATORY)
-
-Nothing else stops an agent from running the wrong product's commands in this project.
-`caw2` is a separate product with an incompatible harness; running `/caw2:*` in a caw v1
-project splits the project's memory across two stores and leaves orphan state behind.
-
-The pin MUST go in `CLAUDE.md`, not in `.claude/rules/`. `CLAUDE.md` is the only file
-guaranteed to be in context at the *start* of a session — which is when the namespace
-choice is made. A `paths:`-gated rule file only loads (if at all) on a file edit, far too
-late to stop a wrong command.
-
-Write this block into `<project>/CLAUDE.md`. It is delimited by markers so it can be
-replaced in place — **idempotent**: if `<!-- caw:version-pin -->` already exists, replace
-everything between it and `<!-- /caw:version-pin -->`; otherwise append to the end of the
-file. Never touch any other line of `CLAUDE.md`.
-
-```markdown
-<!-- caw:version-pin -->
-## Agent workflow — caw v1 only
-
-This project is scaffolded with **caw v1**. Its slash commands are `/caw-setup`, `/caw-plan`,
-`/caw-code`, `/caw-test`, `/caw-review`, `/caw-verify`, `/caw-status`.
-
-**Never run `/caw2:*` in this repo.** caw2 is a separate product with an incompatible harness:
-
-| | caw v1 (this project) | caw2 (do not use here) |
-|---|---|---|
-| Task state | `.claude/conductor/tasks/<id>/overview.yaml` | `harness.db` (SQLite) via `harness-cli` |
-| Agent memory | `.claude/agent-memory/{setup,planner,coder,tester,reviewer}/` (dir = agent `name:`) | `.claude/agent-memory/caw2-*/` |
-| Skill names | bare (`security-hardening`) | namespaced (`caw2:security-hardening`) |
-
-If unsure which version a project uses, check for `.claude/caw.config.json` — its presence
-means caw v1.
-<!-- /caw:version-pin -->
-```
-
-**Verify before moving on:** `grep -c "caw:version-pin" CLAUDE.md` must return `2` (open +
-close marker). If it returns `0`, the block was not written — go back and write it. If it
-returns more than `2`, you duplicated the block instead of replacing it — collapse it to one.
-
-### Phase 6b — Generate `.claude/rules/project.md`
-
-Write `<project>/.claude/rules/project.md` with **project-specific non-overridable rules** discovered during stack detection. This file complements the generic `common/` and `typescript/` rules in `.claude/rules/`.
-
-**The file MUST start with YAML frontmatter carrying `paths:` globs for the
-stack.** A rule file with `paths:` loads only when a matching file is edited;
-a rule **without** `paths:` is either injected into every session (context
-cost — this file grows over the project's life) or never loaded at all,
-depending on the harness version. Neither is acceptable for the project's
-source of truth. Derive the globs from the detected stack (Phase 1): every
-app/package source dir, test files, migrations, and the conductor task and
-decision files so plan/code/review edits load it too. The agents (`planner`,
-`coder`, `tester`, `reviewer`) **also `Read` this file explicitly in their
-Step 0**, so it reaches the pipeline whichever way the harness resolves
-`paths:` — the frontmatter serves the human editing session, the explicit
-Read serves the agents.
-
-Template (frontmatter first — no blank line, heading or comment above it):
-
-```markdown
----
-paths:
-  - "apps/**/*.{ts,tsx}"
-  - "packages/**/*.{ts,tsx}"
-  - "src/**/*.{ts,tsx,py}"
-  - "**/migrations/**"
-  - "**/*.{spec,test}.{ts,tsx}"
-  - ".claude/conductor/tasks/**/*.md"
-  - ".claude/conductor/decisions/**/*.md"
----
-
-# Project Rules — {{PROJECT_NAME}}
-
-> Generated by /caw-setup. These are project-specific rules that override
-> generic defaults in `common/` and `typescript/`. Edit freely; re-run
-> `/caw-setup --refresh` to regenerate from stack detection.
-
-## Stack lock-ins
-
-> Hard constraints derived from CLAUDE.md + package.json. Agents must respect these.
-
-<!-- Examples (replace with project-specific ones):
-- Database: **Drizzle only**. Do not propose Prisma migrations even if `@prisma/client` appears in node_modules — it's a transitive dep.
-- ORM queries: use **drizzle-orm** + `drizzle-kit` migrations. No raw SQL except in `db/seeds/`.
-- HTTP client: use **ofetch**, not axios. Axios is banned project-wide.
-- Date handling: **date-fns**, not dayjs/moment.
--->
-
-## Forbidden patterns
-
-> Things this project has explicitly rejected. Cite the reason if known.
-
-<!-- Examples:
-- No barrel re-exports across feature boundaries (perf regressions, task-007).
-- No `any` in `src/modules/auth/` — strict typing required for security boundary.
-- No direct env access in handlers — use `config.service.ts` injection.
--->
-
-## Conventions overrides
-
-> Where this project deviates from caw defaults in `common/coding-standards.md`
-> and `typescript/coding-style.md`.
-
-<!-- Examples:
-- File size: this project allows 800-line files in `src/generated/` (codegen outputs).
-- Tests location: co-located `*.spec.ts` next to source, NOT in `__tests__/`.
--->
-
-## Domain rules
-
-> Business / domain constraints that agents need to respect when changing code.
-
-<!-- Examples:
-- Sessions: revocation is soft-delete (`revoked_at`); never hard-delete from `user_sessions`.
-- Audit log: every mutation in `payments` module must emit `AuditEvent` via the interceptor.
--->
-```
-
-**How to fill it:**
-- Replace the `paths:` globs with directories that actually exist (drop `src/**` on a pure monorepo, add `apps/mobile/**` for Expo, `**/*.py` for a Python service, `supabase/**` or `drizzle/**` for the migrations dir). Keep the two `.claude/conductor/**` globs — they are what loads the file while an agent edits a plan or review. Verify with `head -1 .claude/rules/project.md` → must print `---`.
-- Pull stack lock-ins from CLAUDE.md narrative (e.g. "we use Drizzle, not Prisma" → entry in "Stack lock-ins").
-- Pull forbidden patterns from CLAUDE.md custom instructions ("never use X").
-- Leave sections with `<!-- Examples ... -->` if no project-specific rules were detected — the user fills them in over time.
-- This file is what differentiates one caw project from another. Treat it as the per-project counterpart to the generic rules in `common/` and `typescript/`.
-
-### Phase 6d — Verify agent memory directories (MANDATORY)
-
-Each agent declares `memory: project`, and Claude Code stores that memory at
-`.claude/agent-memory/<name>/` where `<name>` is the agent's `name:`
-frontmatter — **`coder`, not `caw-coder`**. A directory under any other name is
-never read by any agent: lessons written there are invisible, and every task
-pays the same learning cost again.
-
-Run (one Bash call):
-
-```bash
-cd "$PROJECT_PATH"
-for f in .claude/agents/*.md; do
-  n=$(grep -m1 '^name:' "$f" | sed 's/^name:[[:space:]]*//')
-  d=".claude/agent-memory/$n"
-  [[ -d "$d" ]] && echo "✓ $d" || { mkdir -p "$d"; echo "created $d"; }
-done
-echo "=== orphan memory dirs (should be empty) ==="
-ls -d .claude/agent-memory/*/ 2>/dev/null | grep -vE "/($(grep -h -m1 '^name:' .claude/agents/*.md | sed 's/^name:[[:space:]]*//' | paste -sd'|' -))/$"
-```
-
-The expected set is exactly the `name:` values of the agents in
-`.claude/agents/`. If the listing shows legacy `caw-*` directories (or any
-name that matches no agent), **do not delete or move them yourself** — they
-hold the user's accumulated memory. Tell the user, with the exact commands:
-
-```
-⚠️ Orphan agent-memory dirs found: .claude/agent-memory/caw-coder/, caw-planner/
-   No agent reads these. Move their contents into the correctly named dirs:
-     git mv .claude/agent-memory/caw-coder/<file>.md .claude/agent-memory/coder/
-   then merge caw-coder/MEMORY.md into coder/MEMORY.md by hand (keep both
-   sets of entries, dedupe), and remove the emptied caw-* dirs.
-```
-
-If both the legacy dir and the correctly named dir carry a `MEMORY.md`,
-`git mv` refuses — that is the merge case above, not something to force. Do
-not report `/caw-setup` complete while an orphan dir still holds files the
-user has not been told about.
+### Phases 5–6d — Generate project context
+
+Before writing project metadata, **Read**
+`.claude/conductor/templates/setup-project-reference.md`. It is the canonical contract
+for generating `skill-map.yaml`, `conventions.md`, `project.yaml`, the caw
+version pin, project rules, and agent-memory directories. Execute its Phases
+5 through 6d in order; do not reproduce those schemas from memory.
 
 ### Phase 7 — Report
 

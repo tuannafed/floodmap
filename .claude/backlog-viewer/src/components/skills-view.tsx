@@ -8,15 +8,15 @@ import {
   List,
   MoreHorizontal,
   Search,
-  TrendingUp,
   X,
   Zap,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { MarkdownBody } from '@/components/markdown-body';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useEventSubscribe } from '@/hooks/use-event-stream';
-import { renderMarkdown } from '@/lib/markdown';
+import { useI18n } from '@/lib/i18n/context';
 import { inferDomain } from '@/lib/skill-domain';
 import { cn, fetchJson } from '@/lib/utils';
 
@@ -37,45 +37,32 @@ function domainStyle(skill: SkillSummary) {
   return inferDomain(skill);
 }
 
-// Generate a stable pseudo-random icon + bg color per skill name
+// Generate a stable pseudo-random icon + accent color per skill name. The
+// tile background is derived from the accent via color-mix against the
+// theme's own --card, so it reads as a deep tinted chip in dark mode and a
+// soft pastel chip in light mode instead of a hardcoded near-black square.
+// No purple/pink here on purpose — at the 22% tint used below, both read as
+// pink on a light card, which is what actually got flagged.
 const ICON_POOL = [Code2, BookOpen, FileText, BarChart2, Zap, FlameIcon];
-const BG_POOL = [
-  { bg: '#1a3a5f', icon: '#3b82f6' },
-  { bg: '#1a3a2a', icon: '#22c55e' },
-  { bg: '#3b2a1a', icon: '#f97316' },
-  { bg: '#2e1a4a', icon: '#a855f7' },
-  { bg: '#1a3a3a', icon: '#06b6d4' },
-  { bg: '#3a2a1a', icon: '#eab308' },
-  { bg: '#2a1a3a', icon: '#ec4899' },
-];
+const ACCENT_POOL = ['#3b82f6', '#22c55e', '#f97316', '#0d9488', '#06b6d4', '#eab308', '#78716c'];
 
 function skillIcon(name: string) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
+  const accent = ACCENT_POOL[h % ACCENT_POOL.length];
   return {
     Icon: ICON_POOL[h % ICON_POOL.length],
-    colors: BG_POOL[h % BG_POOL.length],
+    colors: {
+      bg: `color-mix(in oklch, ${accent} 22%, var(--card))`,
+      icon: accent,
+    },
   };
 }
 
-// Fake-but-stable use count derived from name hash
-function stableUses(name: string): number {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 37 + name.charCodeAt(i)) & 0xffff;
-  return 10 + (h % 130);
-}
-
-function isTrending(name: string): boolean {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 17 + name.charCodeAt(i)) & 0xffff;
-  return h % 5 === 0;
-}
-
 function SkillCard({ skill, onClick }: { skill: SkillSummary; onClick: () => void }) {
+  const { s, domain } = useI18n();
   const { Icon, colors } = skillIcon(skill.name);
   const ds = domainStyle(skill);
-  const uses = stableUses(skill.name);
-  const trending = isTrending(skill.name);
   const version = skill.metadata.version;
 
   return (
@@ -94,9 +81,8 @@ function SkillCard({ skill, onClick }: { skill: SkillSummary; onClick: () => voi
           <Icon className="size-5" style={{ color: colors.icon }} />
         </div>
 
-        {/* Top-right: dots + optional trending/version badges */}
+        {/* Top-right: dots + optional version badge */}
         <div className="flex items-center gap-1.5">
-          {trending && <FlameIcon className="size-3.5 text-orange-400" />}
           {version && (
             <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
               v{version}
@@ -108,25 +94,19 @@ function SkillCard({ skill, onClick }: { skill: SkillSummary; onClick: () => voi
 
       {/* Name + description */}
       <div className="px-4 pb-3 flex-1">
-        <p className="text-[14px] font-semibold text-foreground leading-snug mb-1.5">
-          {skill.name}
-        </p>
-        <p className="text-[12px] text-muted-foreground/70 leading-relaxed line-clamp-3">
-          {skill.description || 'No description.'}
+        <p className="text-sm font-semibold text-foreground leading-snug mb-1.5">{skill.name}</p>
+        <p className="text-xs text-muted-foreground/70 leading-relaxed line-clamp-3">
+          {skill.description || s.skills.noDescription}
         </p>
       </div>
 
       {/* Card footer */}
-      <div className="flex items-center justify-between px-4 py-3 border-t border-border/40">
-        <div className="flex items-center gap-1 text-[11px] text-muted-foreground/60">
-          <span className="font-medium">{uses} uses</span>
-          {trending && <TrendingUp className="size-3 text-orange-400 ml-0.5" />}
-        </div>
+      <div className="flex items-center justify-end px-4 py-3 border-t border-border/40">
         <span
           className="text-[10px] font-semibold px-2 py-0.5 rounded"
-          style={{ backgroundColor: `${ds.bg}`, color: ds.text }}
+          style={{ backgroundColor: `${ds.color}20`, color: ds.color }}
         >
-          {ds.label}
+          {domain(ds.key, ds.label)}
         </span>
       </div>
     </button>
@@ -134,10 +114,9 @@ function SkillCard({ skill, onClick }: { skill: SkillSummary; onClick: () => voi
 }
 
 function SkillListRow({ skill, onClick }: { skill: SkillSummary; onClick: () => void }) {
+  const { domain } = useI18n();
   const { Icon, colors } = skillIcon(skill.name);
   const ds = domainStyle(skill);
-  const uses = stableUses(skill.name);
-  const trending = isTrending(skill.name);
 
   return (
     <button
@@ -156,15 +135,11 @@ function SkillListRow({ skill, onClick }: { skill: SkillSummary; onClick: () => 
         <p className="text-[11px] text-muted-foreground/60 truncate mt-0.5">{skill.description}</p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <span className="text-[11px] text-muted-foreground/50 flex items-center gap-1">
-          {uses} uses
-          {trending && <TrendingUp className="size-3 text-orange-400" />}
-        </span>
         <span
           className="text-[10px] font-semibold px-2 py-0.5 rounded"
-          style={{ backgroundColor: ds.bg, color: ds.text }}
+          style={{ backgroundColor: `${ds.color}20`, color: ds.color }}
         >
-          {ds.label}
+          {domain(ds.key, ds.label)}
         </span>
       </div>
     </button>
@@ -172,6 +147,7 @@ function SkillListRow({ skill, onClick }: { skill: SkillSummary; onClick: () => 
 }
 
 function SkillSheetContent({ folder, skill }: { folder: string; skill: SkillSummary }) {
+  const { s, domain } = useI18n();
   const [detail, setDetail] = useState<SkillDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -212,11 +188,9 @@ function SkillSheetContent({ folder, skill }: { folder: string; skill: SkillSumm
             <Icon className="size-6" style={{ color: colors.icon }} />
           </div>
           <div className="flex-1 min-w-0 pt-0.5">
-            <h2 className="text-[20px] font-bold leading-snug text-foreground pr-8">
-              {skill.name}
-            </h2>
+            <h2 className="text-xl font-bold leading-snug text-foreground pr-8">{skill.name}</h2>
             <p className="text-[13px] text-muted-foreground/70 leading-relaxed mt-1">
-              {skill.description || 'No description.'}
+              {skill.description || s.skills.noDescription}
             </p>
           </div>
         </div>
@@ -225,9 +199,9 @@ function SkillSheetContent({ folder, skill }: { folder: string; skill: SkillSumm
         <div className="flex flex-wrap items-center gap-2">
           <span
             className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full"
-            style={{ backgroundColor: ds.bg, color: ds.text }}
+            style={{ backgroundColor: `${ds.color}20`, color: ds.color }}
           >
-            domain: {ds.label.toLowerCase()}
+            {s.skills.domainPrefix(domain(ds.key, ds.label).toLowerCase())}
           </span>
           {skill.metadata.version && (
             <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full border border-border/60 text-muted-foreground">
@@ -265,7 +239,7 @@ function SkillSheetContent({ folder, skill }: { folder: string; skill: SkillSumm
             <Skeleton className="h-3 w-2/3" />
           </div>
         ) : error ? (
-          <p className="text-sm text-destructive italic">Failed to load: {error}</p>
+          <p className="text-sm text-destructive italic">{s.skills.failedToLoad(error)}</p>
         ) : detail ? (
           <>
             {/* File path */}
@@ -273,10 +247,10 @@ function SkillSheetContent({ folder, skill }: { folder: string; skill: SkillSumm
               <FileText className="size-3 shrink-0" />
               <span>{detail.path}</span>
             </div>
-            <div
-              className="prose-task max-w-none"
-              // eslint-disable-next-line react/no-danger
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(detail.content) }}
+            <MarkdownBody
+              content={detail.content}
+              filenameBase={detail.folder}
+              title={detail.path}
             />
           </>
         ) : null}
@@ -285,15 +259,16 @@ function SkillSheetContent({ folder, skill }: { folder: string; skill: SkillSumm
   );
 }
 
-type SortKey = 'most-used' | 'name' | 'domain';
+type SortKey = 'name' | 'domain';
 type ViewMode = 'grid' | 'list';
 
 export function SkillsView() {
+  const { s } = useI18n();
   const [skills, setSkills] = useState<SkillSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [openFolder, setOpenFolder] = useState<string | null>(null);
-  const [sort, setSort] = useState<SortKey>('most-used');
+  const [sort, setSort] = useState<SortKey>('name');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
 
   const load = useCallback(() => {
@@ -320,8 +295,7 @@ export function SkillsView() {
         )
       : [...skills];
 
-    if (sort === 'most-used') list = list.sort((a, b) => stableUses(b.name) - stableUses(a.name));
-    else if (sort === 'name') list = list.sort((a, b) => a.name.localeCompare(b.name));
+    if (sort === 'name') list = list.sort((a, b) => a.name.localeCompare(b.name));
     else if (sort === 'domain') {
       list = list.sort((a, b) => {
         const da = domainStyle(a).label;
@@ -347,13 +321,15 @@ export function SkillsView() {
     <div className="flex flex-col gap-0 w-full pb-8">
       {/* Stats bar */}
       <div className="px-6 pt-5 pb-4 border-b border-border/40">
-        <div className="flex items-center gap-6 text-[12px] text-muted-foreground">
+        <div className="flex items-center gap-6 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5">
             <Zap className="size-3.5 text-primary" />
-            <span className="font-semibold text-foreground">{skills.length}</span> skills installed
+            <span className="font-semibold text-foreground">{skills.length}</span>{' '}
+            {s.skills.installedSuffix}
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="font-semibold text-foreground">{domainCount}</span> domains covered
+            <span className="font-semibold text-foreground">{domainCount}</span>{' '}
+            {s.skills.domainsCoveredSuffix}
           </span>
         </div>
       </div>
@@ -367,7 +343,7 @@ export function SkillsView() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search skills, descriptions, tags…"
+            placeholder={s.skills.searchPlaceholder}
             className={cn(
               'w-full h-9 pl-9 pr-8 rounded-lg text-[13px] bg-muted/30 border border-border/50',
               'text-foreground placeholder:text-muted-foreground/40',
@@ -413,9 +389,8 @@ export function SkillsView() {
         <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5">
           {(
             [
-              ['most-used', 'Most used'],
-              ['name', 'Name'],
-              ['domain', 'Domain'],
+              ['name', s.skills.sortName],
+              ['domain', s.skills.sortDomain],
             ] as [SortKey, string][]
           ).map(([key, label]) => (
             <button
@@ -434,7 +409,7 @@ export function SkillsView() {
           ))}
         </div>
 
-        <span className="text-[12px] text-muted-foreground/60 ml-auto shrink-0">
+        <span className="text-xs text-muted-foreground/60 ml-auto shrink-0">
           {filtered.length} / {skills.length}
         </span>
       </div>
@@ -449,20 +424,26 @@ export function SkillsView() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="py-20 text-center text-muted-foreground text-sm">
-            {skills.length === 0
-              ? 'No skills installed. Run /caw-setup to add some.'
-              : 'No skills match your search.'}
+            {skills.length === 0 ? s.skills.noneInstalled : s.skills.noMatch}
           </div>
         ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {filtered.map((s) => (
-              <SkillCard key={s.folder} skill={s} onClick={() => setOpenFolder(s.folder)} />
+            {filtered.map((skill) => (
+              <SkillCard
+                key={skill.folder}
+                skill={skill}
+                onClick={() => setOpenFolder(skill.folder)}
+              />
             ))}
           </div>
         ) : (
           <div className="rounded-xl border border-border/50 overflow-hidden">
-            {filtered.map((s) => (
-              <SkillListRow key={s.folder} skill={s} onClick={() => setOpenFolder(s.folder)} />
+            {filtered.map((skill) => (
+              <SkillListRow
+                key={skill.folder}
+                skill={skill}
+                onClick={() => setOpenFolder(skill.folder)}
+              />
             ))}
           </div>
         )}
@@ -476,7 +457,7 @@ export function SkillsView() {
         }}
       >
         <SheetContent className="w-full sm:max-w-2xl flex flex-col gap-0 p-0 overflow-hidden">
-          <SheetTitle className="sr-only">{openSkill?.name ?? 'Skill detail'}</SheetTitle>
+          <SheetTitle className="sr-only">{openSkill?.name ?? s.skills.detailFallback}</SheetTitle>
           <SheetDescription className="sr-only">{openSkill?.description ?? ''}</SheetDescription>
           {openSkill && <SkillSheetContent folder={openSkill.folder} skill={openSkill} />}
         </SheetContent>

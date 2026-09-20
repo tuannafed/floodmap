@@ -6,6 +6,8 @@ paths:
 
 Auto-loads when the coder reads `code.md` before appending (every phase after the first) and for the reviewer. On the **first phase `code.md` does not exist yet — the coder `Read`s this file itself** (a `Write` never triggers a rule). Status, ADRs, HB and the claims contract: `harness-contract.md`.
 
+**"First phase" is per-session, not global — re-check before `Write`ing.** If this phase runs in a `parallelization_groups` group with any sibling phase, another coder session may create `code.md` first. A `Write` at this point assumes the file is still absent; if it isn't, it silently replaces whatever the sibling already wrote (confirmed live, HB-018 — destroyed 4 prior phases' write-ups). `Read` the path immediately before writing, not only at session start; if it now exists, `Edit`/append instead.
+
 ## 1. Before touching a shared thing
 If the phase edits a shared file (helper, repository, service, schema, config, a 401 / error / logging primitive) or changes what a shared concept means, the plan carries a `## Consumers` block (`plan-discipline.md` §2). Before editing, re-run its two searches **by table / column / concept name**, not only by function name. A consumer the plan missed → stop, add it to the block under `## Revisions`, then code; the reviewer re-runs the grep and files HIGH for any miss. A fix in a file that has a twin (sibling app, duplicated primitive) is not done until every sibling root has been grepped. Two helpers computing the same concept differently is the most common way an approved task ships a defect — reuse the existing helper, or fix it in place and enumerate its consumers.
 

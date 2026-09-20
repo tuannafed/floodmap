@@ -2,13 +2,14 @@ import {
   Ban,
   CheckCircle2,
   Compass,
+  HelpCircle,
   type LucideIcon,
   Pause,
   Search,
   Settings,
   TestTube,
 } from 'lucide-react';
-
+import { STAGE_DEFS, STATUS_LABELS, STATUS_TO_STAGE } from './status-map.generated';
 import type { Phase, Task } from './task-parser';
 
 export interface Stage {
@@ -18,93 +19,49 @@ export interface Stage {
   color: string;
 }
 
+// Icon + color per stage key — kept here (not codegen'd) since they're presentation-only
+// and the registry has no opinion on iconography. Stage keys/labels/order come from
+// STAGE_DEFS (generated from templates/task-status-registry.json).
+const STAGE_ICON: Record<string, LucideIcon> = {
+  pending: Pause,
+  planning: Compass,
+  coding: Settings,
+  testing: TestTube,
+  review: Search,
+  blocked: Ban,
+  done: CheckCircle2,
+  unknown: HelpCircle,
+};
+const STAGE_COLOR: Record<string, string> = {
+  pending: '#718096',
+  planning: '#805ad5',
+  coding: '#dd6b20',
+  testing: '#3182ce',
+  review: '#d69e2e',
+  blocked: '#c53030',
+  done: '#48bb78',
+  unknown: '#a0aec0',
+};
+
 // Stage-based columns matching the task lifecycle.
 // Mapping from the `status:` field in `overview.yaml` → stage column.
-export const STAGES: Stage[] = [
-  { key: 'pending', label: 'Pending', icon: Pause, color: '#718096' },
-  { key: 'planning', label: 'Planning', icon: Compass, color: '#805ad5' },
-  { key: 'coding', label: 'Coding', icon: Settings, color: '#dd6b20' },
-  { key: 'testing', label: 'Testing', icon: TestTube, color: '#3182ce' },
-  { key: 'review', label: 'Review', icon: Search, color: '#d69e2e' },
-  { key: 'blocked', label: 'Blocked', icon: Ban, color: '#c53030' },
-  { key: 'done', label: 'Done', icon: CheckCircle2, color: '#48bb78' },
-];
-
-const STATUS_TO_STAGE: Record<string, string> = {
-  pending: 'pending',
-  'plan-pending': 'pending',
-
-  planning: 'planning',
-  'plan-done': 'planning',
-
-  coding: 'coding',
-  'code-pending': 'coding',
-  'code-done': 'coding',
-  'in-progress': 'coding',
-  in_progress: 'coding',
-
-  testing: 'testing',
-  'red-done': 'testing',
-  'tests-done': 'testing',
-  'tests-skipped': 'testing',
-
-  reviewing: 'review',
-  'review-pending': 'review',
-  'ready-to-review': 'review',
-
-  blocked: 'blocked',
-  'needs-rework': 'blocked',
-  'review-blocked': 'blocked',
-
-  // Review passed / shippable / shipped — all land in Done.
-  'review-done': 'done',
-  'review-approved': 'done',
-  approved: 'done',
-  'ready-to-commit': 'done',
-  verified: 'done',
-  done: 'done',
-  completed: 'done',
-};
-
-// Human-readable label for a raw `status:` value — shown on the card footer
-// so two tasks in the same column can still be told apart at a glance.
-const STATUS_LABELS: Record<string, string> = {
-  pending: 'Pending',
-  'plan-pending': 'Plan pending',
-  planning: 'Planning',
-  'plan-done': 'Plan ready',
-  coding: 'Coding',
-  'code-pending': 'Code pending',
-  'code-done': 'Code done',
-  'in-progress': 'In progress',
-  in_progress: 'In progress',
-  testing: 'Testing',
-  'red-done': 'Tests red',
-  'tests-done': 'Tests passing',
-  'tests-skipped': 'Tests skipped',
-  reviewing: 'Reviewing',
-  'review-pending': 'Review pending',
-  'ready-to-review': 'Ready to review',
-  blocked: 'Blocked',
-  'needs-rework': 'Needs rework',
-  'review-blocked': 'Review blocked',
-  'review-done': 'Reviewed',
-  'review-approved': 'Review approved',
-  approved: 'Approved',
-  'ready-to-commit': 'Ready to commit',
-  verified: 'Verified',
-  done: 'Done',
-  completed: 'Completed',
-};
+export const STAGES: Stage[] = STAGE_DEFS.map((s) => ({
+  key: s.key,
+  label: s.label,
+  icon: STAGE_ICON[s.key] || HelpCircle,
+  color: STAGE_COLOR[s.key] || '#a0aec0',
+}));
 
 export function statusLabel(status: string): string {
   const s = (status || 'pending').toLowerCase().trim();
   return STATUS_LABELS[s] || s.replace(/[-_]/g, ' ');
 }
 
+// A status this registry doesn't recognize lands in a distinct "unknown" bucket instead of
+// silently reading as a normal pending task — never crashes, but never hides the mismatch.
 export function getStageKey(task: Task): string {
   const status = (task.status || 'pending').toLowerCase().trim();
-  return STATUS_TO_STAGE[status] || 'pending';
+  return STATUS_TO_STAGE[status] || 'unknown';
 }
 
 export function groupByStage(tasks: Task[]): Record<string, Task[]> {
@@ -112,7 +69,7 @@ export function groupByStage(tasks: Task[]): Record<string, Task[]> {
   for (const stage of STAGES) groups[stage.key] = [];
   for (const t of tasks) {
     const key = getStageKey(t);
-    (groups[key] || groups.pending).push(t);
+    (groups[key] || groups.unknown).push(t);
   }
   return groups;
 }

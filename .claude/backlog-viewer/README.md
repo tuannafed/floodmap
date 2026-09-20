@@ -29,6 +29,13 @@ CAW_PROJECT_ROOT="$(pwd)/../.." pnpm dev
 
 `CAW_PROJECT_ROOT` defaults to the current working directory if unset.
 
+Optional login gate: set `PUBLIC_AUTH_USER` / `PUBLIC_AUTH_PASS` to require signing in at
+`/login` before the app loads. **Not real access control** — both values are inlined into the
+client JS bundle and the check itself runs in `localStorage`, so anyone with DevTools can read
+the credentials or flip the gate open directly. It only deters a casual visitor on a shared
+screen/network; don't rely on it for a project with sensitive data. Leave the vars unset to skip
+the gate entirely.
+
 ### Vercel (static snapshot)
 
 `DEPLOY_TARGET=vercel` flips every API route to `prerender = true`. Astro
@@ -75,6 +82,52 @@ without `overview.yaml` is skipped as not a valid caw task.
 
 The status→stage mapping (Pending → Planning → Coding → Testing → Review →
 Blocked → Done) lives in [src/lib/status.ts](src/lib/status.ts).
+
+## Decision Log
+
+### Defer GraphQL for backlog viewer
+
+Backlog viewer remains a read-only filesystem projection. The existing parser and JSON endpoints
+(`/api/tasks.json`, `/api/project.json`) are sufficient because task artifacts (`overview.yaml` +
+stage markdown) remain the source of truth and there is no external consumer requiring a typed
+query contract.
+
+**Status: Deferred — not needed currently, not a planned implementation.** No GraphQL dependency,
+schema, resolver, or API-layer change.
+
+Reconsider only when at least one of these becomes true:
+
+- Two or more independent consumers need selective, cross-task queries.
+- Pagination/filtering/aggregation needs exceed what the current JSON endpoints can serve.
+- An external integration requires a stable, typed API contract.
+- The filesystem read model is replaced by a shared service/database.
+
+## Docs view
+
+Lists and previews standalone HTML docs (e.g. specs produced by the
+`technical-doc-html` skill) that live anywhere in the project — not just
+`.claude/conductor/`. `docs/` and `specs/` are auto-detected at the project
+root with zero config — if either exists as a real directory, it's scanned
+automatically. For any other location, add a `docPaths` array to
+`.claude/caw.config.json` (project-relative folders to scan); an explicit
+`docPaths` entry always wins over auto-detection:
+
+```json
+{
+  "caw_home": "...",
+  "docPaths": ["specs", "docs/reports"]
+}
+```
+
+Each configured folder is walked recursively for `*.html` files (skipping
+`node_modules`, `.git`, `dist`, `build`, `.next`, `.astro`, `.vercel`); the
+list refreshes live over the same SSE channel as tasks/skills, and clicking a
+doc loads it in an `<iframe>` served from `/api/docs/<relative-path>` — never
+by joining a raw request path onto disk, so a request can't resolve outside
+the configured folders even with `../` segments (see
+[src/lib/doc-parser.ts](src/lib/doc-parser.ts)). No effect on the Vercel
+static build — same precedent as `/api/events`, since there's no live project
+tree to scan at runtime there.
 
 ## Layout
 

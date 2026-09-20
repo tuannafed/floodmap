@@ -15,7 +15,11 @@ useDefault = false
 [[rules]]
 id = "custom-openai-api-key"
 description = "OpenAI API Key (legacy + project + service-account)"
-regex = '''sk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{40,}'''
+# Legacy bare `sk-` keys are base62 only (no hyphens) — a hyphen-allowing
+# fallback here false-positives on any `task-NNN-kebab-slug` id, since
+# "task-010-..." contains "sk-010-...". Prefixed variants legitimately
+# contain hyphens/underscores, so only the bare-`sk-` branch is tightened.
+regex = '''sk-(?:proj-|svcacct-|admin-)[A-Za-z0-9_-]{40,}|sk-[A-Za-z0-9]{40,}'''
 tags = ["key", "openai"]
 
 [[rules]]

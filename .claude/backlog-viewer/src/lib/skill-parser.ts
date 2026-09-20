@@ -1,5 +1,6 @@
+import type { Stats } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 
 export interface SkillSummary {
   name: string;
@@ -74,7 +75,7 @@ async function readSkillFile(skillPath: string): Promise<{ raw: string; truncate
 }
 
 function makeRelPath(projectRoot: string, abs: string): string {
-  return abs.startsWith(projectRoot + '/') ? abs.slice(projectRoot.length + 1) : abs;
+  return abs.startsWith(`${projectRoot}/`) ? abs.slice(projectRoot.length + 1) : abs;
 }
 
 export async function listSkills(projectRoot: string): Promise<SkillSummary[]> {
@@ -89,7 +90,7 @@ export async function listSkills(projectRoot: string): Promise<SkillSummary[]> {
   const summaries: SkillSummary[] = [];
   for (const folderName of entries.sort()) {
     const skillFolder = join(skillsDir, folderName);
-    let folderStat;
+    let folderStat: Stats;
     try {
       folderStat = await stat(skillFolder); // follows symlinks
     } catch {
